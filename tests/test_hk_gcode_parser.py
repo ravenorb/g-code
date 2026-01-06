@@ -8,6 +8,25 @@ import pytest
 from parser.hk_gcode_parser import DEFAULT_TOLERANCE, Command, ParseError, parse_program
 
 
+def test_sample_files_live_in_samples_directory():
+    project_root = Path(__file__).resolve().parents[1]
+    samples_dir = project_root / "samples"
+    expected_files = {
+        "100_200SS 1HK.MPF",
+        "12GA Temp.MPF",
+        "12GA Temp2.MPF",
+        "12GA Temp3.MPF",
+        "175SM 1HK.MPF",
+    }
+
+    assert samples_dir.is_dir()
+
+    for filename in expected_files:
+        sample_path = samples_dir / filename
+        assert sample_path.exists()
+        assert sample_path.stat().st_size > 0
+
+
 def test_parses_line_with_comments_and_parameters():
     program = parse_program("G1 X10.0 Y-5.5 F1200 ; cut pass")
     assert not program.errors

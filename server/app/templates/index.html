@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HK Parser Upload</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      h1,
+      h2 {
+        margin-bottom: 0.5rem;
+      }
+      .card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.5rem;
+      }
+      th,
+      td {
+        border: 1px solid #e2e8f0;
+        padding: 0.5rem;
+        text-align: left;
+      }
+      th {
+        background: #f1f5f9;
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.15rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        color: #fff;
+      }
+      .badge.error {
+        background: #ef4444;
+      }
+      .badge.warning {
+        background: #f59e0b;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>HK Parser Upload</h1>
+    <div class="card">
+      <form id="upload-form">
+        <label for="file">Select G-code file:</label>
+        <input type="file" id="file" name="file" accept=".gcode,.txt" required />
+        <button type="submit">Upload & Validate</button>
+      </form>
+      <p id="status" class="hidden"></p>
+    </div>
+
+    <div class="card hidden" id="results-card">
+      <h2>Diagnostics</h2>
+      <p id="summary"></p>
+      <table id="diagnostics-table">
+        <thead>
+          <tr>
+            <th>Severity</th>
+            <th>Message</th>
+            <th>Line</th>
+            <th>Code</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <h2>Parsed Fields</h2>
+      <table id="parsed-table">
+        <thead>
+          <tr>
+            <th>Line</th>
+            <th>Raw</th>
+            <th>Field</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <script>
+      const form = document.getElementById("upload-form");
+      const statusEl = document.getElementById("status");
+      const resultsCard = document.getElementById("results-card");
+      const summaryEl = document.getElementById("summary");
+      const diagnosticsBody = document.querySelector("#diagnostics-table tbody");
+      const parsedBody = document.querySelector("#parsed-table tbody");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const fileInput = document.getElementById("file");
+        if (!fileInput.files.length) return;
+
+        statusEl.classList.remove("hidden");
+        statusEl.textContent = "Uploading and validating...";
+        resultsCard.classList.add("hidden");
+        diagnosticsBody.innerHTML = "";
+        parsedBody.innerHTML = "";
+
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+
+        try {
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(detail || "Validation failed");
+          }
+
+          const data = await response.json();
+          renderSummary(data);
+          renderDiagnostics(data.diagnostics);
+          renderParsed(data.parsed_lines);
+
+          statusEl.textContent = "Validation completed.";
+          resultsCard.classList.remove("hidden");
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+        }
+      });
+
+      function renderSummary(data) {
+        summaryEl.textContent = `Job: ${data.job_id} — Errors: ${data.summary.errors}, Warnings: ${data.summary.warnings}, Lines: ${data.summary.lines}`;
+      }
+
+      function renderDiagnostics(diagnostics) {
+        diagnosticsBody.innerHTML = "";
+        if (!diagnostics.length) {
+          diagnosticsBody.innerHTML = `<tr><td colspan="4">No diagnostics</td></tr>`;
+          return;
+        }
+        diagnostics.forEach((diag) => {
+          const row = document.createElement("tr");
+          const badge = `<span class="badge ${diag.severity}">${diag.severity}</span>`;
+          row.innerHTML = `
+            <td>${badge}</td>
+            <td>${diag.message}</td>
+            <td>${diag.line ?? ""}</td>
+            <td>${diag.code ?? ""}</td>
+          `;
+          diagnosticsBody.appendChild(row);
+        });
+      }
+
+      function renderParsed(parsedLines) {
+        parsedBody.innerHTML = "";
+        if (!parsedLines.length) {
+          parsedBody.innerHTML = `<tr><td colspan="4">No parsed lines</td></tr>`;
+          return;
+        }
+        parsedLines.forEach((line) => {
+          line.fields.forEach((field, idx) => {
+            const row = document.createElement("tr");
+            row.innerHTML = `
+              <td>${idx === 0 ? line.line_number : ""}</td>
+              <td>${idx === 0 ? line.raw : ""}</td>
+              <td>${field.name}</td>
+              <td>${field.value}</td>
+            `;
+            parsedBody.appendChild(row);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

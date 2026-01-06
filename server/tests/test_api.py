@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -74,3 +75,51 @@ async def test_upload_reports_part_and_contour_counts(client):
     assert len(body["parts"]) == 2
     contours = [part["contours"] for part in body["parts"]]
     assert contours == [2, 1]
+
+
+@pytest.mark.anyio
+async def test_upload_persists_metadata_and_extracts_part(client):
+    payload = (
+        "HKLDB(2,\"S304\",3,0,0,0)\n"
+        "HKINI(2,21.5,6.2,0,0,0)\n"
+        "N10000 HKOST(0.3,0.26,0.00,10001,5,0,0,0)\n"
+        "HKPPP\n"
+        "N20000 HKEND(0,0,0)\n"
+        "N10 M30\n"
+        "\n"
+        "N10001 HKSTR(1,1,1.0,2.0,0,0.5,0.5,0)\n"
+        "HKPIE(0,0,0)\n"
+        "HKLEA(0,0,0)\n"
+        "G1 X1.0 Y2.0\n"
+        "HKCUT(0,0,0)\n"
+        "G1 X2.0 Y3.0\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
+    ).encode()
+
+    response = await client.post(
+        "/upload",
+        files={"file": ("job.mpf", io.BytesIO(payload), "text/plain")},
+        data={"description": "single part demo"},
+    )
+    assert response.status_code == 200
+    upload_body = response.json()
+    assert upload_body["stored_path"]
+    assert upload_body["meta_path"]
+    assert Path(upload_body["stored_path"]).exists()
+    assert Path(upload_body["meta_path"]).exists()
+
+    part_label = upload_body["parts"][0]["hkost_line"]
+    extract_response = await client.post(
+        "/extract",
+        json={"job_id": upload_body["job_id"], "part_label": part_label, "margin": 0.1},
+    )
+    assert extract_response.status_code == 200
+    extract_body = extract_response.json()
+    assert Path(extract_body["stored_path"]).exists()
+    extracted_text = Path(extract_body["stored_path"]).read_text()
+    assert "HKINI(" in extracted_text
+    assert "M30" in extracted_text
+    assert "HKSTR" in extracted_text
+    assert extract_body["width"] > 0
+    assert extract_body["height"] > 0

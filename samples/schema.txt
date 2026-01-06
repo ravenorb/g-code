@@ -1,0 +1,173 @@
+A. Top-level job schema
+{
+  "job": {
+    "material": {
+      "library": 2,
+      "name": "S304",
+      "processClass": 3
+    },
+    "init": {
+      "mode": 15,
+      "sheetX": 118.3,
+      "sheetY": 13.9
+    },
+    "operations": []
+  }
+}
+
+B. Operation registration schema (HKOST + HKPPP)
+
+Each HKOST block becomes one operation record.
+
+{
+  "operationId": 10001,
+  "anchor": {
+    "x": 0.3,
+    "y": 6.8,
+    "z": 0.0
+  },
+  "technology": 1,
+  "status": "registered"
+}
+
+Constraints (important)
+
+operationId must be unique
+
+anchor.x/y must match HKSTR start
+
+technology maps directly to HK tech DB
+
+status changes at runtime (registered → cutting → complete)
+
+C. Cutting sequence schema (HKSTR → HKPED)
+{
+  "operationId": 10001,
+  "cut": {
+    "type": "contour",
+    "kerfMode": "compensated",
+    "start": {
+      "x": 28.6017,
+      "y": 3.5914,
+      "z": 0.0
+    },
+    "leadTarget": {
+      "x": 28.9375,
+      "y": 3.5886,
+      "z": 0.0
+    },
+    "motion": [
+      { "cmd": "G1", "x": 28.6903, "y": 3.5028 },
+      { "cmd": "G1", "x": 28.9415, "y": 3.2516 }
+    ]
+  }
+}
+
+Enumerations you should lock in
+"type": ["contour", "slot", "pierce-only"],
+"kerfMode": ["none", "compensated"]
+
+D. Full operation object (what Codex should consume)
+{
+  "operationId": 10001,
+  "technology": 1,
+  "anchor": { "x": 0.3, "y": 6.8, "z": 0.0 },
+  "cut": {
+    "type": "contour",
+    "kerfMode": "compensated",
+    "start": { "x": 28.6017, "y": 3.5914, "z": 0.0 },
+    "leadTarget": { "x": 28.9375, "y": 3.5886, "z": 0.0 },
+    "sequence": [
+      "HKPIE",
+      "HKLEA",
+      "HKCUT",
+      "HKSTO",
+      "HKPED"
+    ],
+    "motion": []
+  }
+}
+
+3️⃣ Fusion 360 CPS Mapping (what the post must do)
+
+This is the critical translation layer.
+
+A. CAM → HK macro mapping
+Fusion CAM Concept	HK Output
+Setup / Stock	HKLDB + HKINI
+Operation origin	HKOST(anchor, opId, tech)
+Toolpath start	HKSTR
+Lead-in	HKLEA
+First cutting move	HKCUT
+Toolpath end	HKSTO
+Operation end	HKPED
+B. CPS logic flow (pseudo-code)
+
+This is what your .cps must do.
+
+onProgramStart() {
+  writeHKLDB();
+  writeHKINI();
+}
+
+onSection(section) {
+  let opId = nextOperationId();
+  writeHKOST(section.anchor, opId, section.tech);
+  write("HKPPP");
+}
+
+onProgramEnd() {
+  write("HKEND(0,0,0)");
+  write("M30");
+}
+
+onSectionStart(section) {
+  writeHKSTR(section.start, section.leadTarget);
+  write("HKPIE(0,0,0)");
+  write("HKLEA(0,0,0)");
+}
+
+onFirstCutMove() {
+  write("HKCUT(0,0,0)");
+}
+
+onSectionEnd() {
+  write("HKSTO(0,0,0)");
+  write("HKPED(0,0,0)");
+}
+
+C. Technology number assignment (do this explicitly)
+
+You must not guess tech numbers at post time.
+
+Options:
+
+Map Fusion tools → tech number
+
+Map Fusion operation name → tech number
+
+External CSV lookup (material + thickness + opType → tech)
+
+Example mapping table:
+
+{
+  "S304": {
+    "1.5mm": {
+      "contour": 1,
+      "slot": 3,
+      "engrave": 9
+    }
+  }
+}
+
+D. Non-negotiable rules (do not break these)
+
+HKOST must appear before HKSTR
+
+HKEND must appear before M30
+
+HKCUT must appear before the first cutting G1
+
+HKSTO must precede HKPED
+
+Operation IDs must match N-label blocks

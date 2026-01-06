@@ -8,5 +8,7 @@ services:
       - "8000:8000"
     environment:
       - LOG_LEVEL=info
+      - STORAGE_ROOT=/app/storage
     volumes:
       - ./logs:/app/logs
+      - ./storage:/app/storage

@@ -56,132 +56,143 @@
     </style>
   </head>
   <body>
-    <h1>HK Parser Upload</h1>
+    <h1>HK Program Uploader</h1>
     <div class="card">
       <form id="upload-form">
-        <label for="file">Select G-code file:</label>
-        <input type="file" id="file" name="file" accept=".gcode,.txt" required />
-        <button type="submit">Upload & Validate</button>
+        <div>
+          <label for="file">Select HK/MPF file:</label>
+          <input type="file" id="file" name="file" accept=".mpf,.gcode,.txt" required />
+        </div>
+        <div style="margin-top: 0.5rem;">
+          <label for="description">Description:</label><br />
+          <textarea id="description" name="description" rows="2" style="width: 100%;"></textarea>
+        </div>
+        <button type="submit" style="margin-top: 0.5rem;">Upload</button>
       </form>
       <p id="status" class="hidden"></p>
+      <div id="upload-summary" class="hidden"></div>
     </div>
 
-    <div class="card hidden" id="results-card">
-      <h2>Diagnostics</h2>
-      <p id="summary"></p>
-      <table id="diagnostics-table">
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0;">Uploaded Files</h2>
+        <button id="refresh">Refresh</button>
+      </div>
+      <table id="files-table">
         <thead>
           <tr>
-            <th>Severity</th>
-            <th>Message</th>
-            <th>Line</th>
-            <th>Code</th>
+            <th>ID</th>
+            <th>Description</th>
+            <th>Parts</th>
+            <th>Sheet</th>
+            <th>Download</th>
+            <th>Extract</th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
+    </div>
 
-      <h2>Parsed Fields</h2>
-      <table id="parsed-table">
-        <thead>
-          <tr>
-            <th>Line</th>
-            <th>Raw</th>
-            <th>Field</th>
-            <th>Value</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+    <div class="card hidden" id="extract-card">
+      <h2>Extract Part</h2>
+      <p id="extract-file"></p>
+      <label for="part-id">Part ID or index:</label>
+      <input id="part-id" type="text" placeholder="10001 or 0" />
+      <button id="extract-btn">Extract</button>
+      <p id="extract-status"></p>
+      <p id="extract-link" class="hidden"></p>
     </div>
 
     <script>
-      const form = document.getElementById("upload-form");
+      const filesTableBody = document.querySelector("#files-table tbody");
       const statusEl = document.getElementById("status");
-      const resultsCard = document.getElementById("results-card");
-      const summaryEl = document.getElementById("summary");
-      const diagnosticsBody = document.querySelector("#diagnostics-table tbody");
-      const parsedBody = document.querySelector("#parsed-table tbody");
+      const uploadSummary = document.getElementById("upload-summary");
+      const extractCard = document.getElementById("extract-card");
+      const extractFileEl = document.getElementById("extract-file");
+      const extractStatus = document.getElementById("extract-status");
+      const extractLink = document.getElementById("extract-link");
+      let selectedFileId = null;
 
-      form.addEventListener("submit", async (event) => {
+      document.getElementById("upload-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const fileInput = document.getElementById("file");
+        const descriptionInput = document.getElementById("description");
         if (!fileInput.files.length) return;
-
         statusEl.classList.remove("hidden");
-        statusEl.textContent = "Uploading and validating...";
-        resultsCard.classList.add("hidden");
-        diagnosticsBody.innerHTML = "";
-        parsedBody.innerHTML = "";
-
+        statusEl.textContent = "Uploading...";
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
-
+        formData.append("description", descriptionInput.value);
         try {
-          const response = await fetch("/upload", {
-            method: "POST",
-            body: formData,
-          });
-
-          if (!response.ok) {
-            const detail = await response.text();
-            throw new Error(detail || "Validation failed");
-          }
-
-          const data = await response.json();
-          renderSummary(data);
-          renderDiagnostics(data.diagnostics);
-          renderParsed(data.parsed_lines);
-
-          statusEl.textContent = "Validation completed.";
-          resultsCard.classList.remove("hidden");
+          const resp = await fetch("/api/upload", { method: "POST", body: formData });
+          if (!resp.ok) throw new Error(await resp.text());
+          const data = await resp.json();
+          statusEl.textContent = "Upload complete.";
+          uploadSummary.classList.remove("hidden");
+          uploadSummary.innerHTML = `<strong>${data.original}</strong><br/>Parts: ${data.summary.parts}, Sheet: ${JSON.stringify(data.summary.setups || [])}`;
+          await refreshFiles();
         } catch (err) {
           statusEl.textContent = `Error: ${err.message}`;
         }
       });
 
-      function renderSummary(data) {
-        summaryEl.textContent = `Job: ${data.job_id} — Errors: ${data.summary.errors}, Warnings: ${data.summary.warnings}, Lines: ${data.summary.lines}`;
-      }
+      document.getElementById("refresh").addEventListener("click", refreshFiles);
 
-      function renderDiagnostics(diagnostics) {
-        diagnosticsBody.innerHTML = "";
-        if (!diagnostics.length) {
-          diagnosticsBody.innerHTML = `<tr><td colspan="4">No diagnostics</td></tr>`;
+      async function refreshFiles() {
+        filesTableBody.innerHTML = "<tr><td colspan='6'>Loading...</td></tr>";
+        const resp = await fetch("/api/files");
+        const data = await resp.json();
+        filesTableBody.innerHTML = "";
+        if (!data.length) {
+          filesTableBody.innerHTML = "<tr><td colspan='6'>No files uploaded</td></tr>";
           return;
         }
-        diagnostics.forEach((diag) => {
+        data.forEach((item) => {
           const row = document.createElement("tr");
-          const badge = `<span class="badge ${diag.severity}">${diag.severity}</span>`;
+          const setup = item.summary?.setups?.[0];
           row.innerHTML = `
-            <td>${badge}</td>
-            <td>${diag.message}</td>
-            <td>${diag.line ?? ""}</td>
-            <td>${diag.code ?? ""}</td>
+            <td>${item.id}</td>
+            <td>${item.description || ""}</td>
+            <td>${item.summary?.parts ?? "?"}</td>
+            <td>${setup ? setup.sheetX + " x " + setup.sheetY : "?"}</td>
+            <td>${item.paths?.original ? `<a href=\"/nas/${item.paths.original.split('/').pop()}\">file</a>` : ""}</td>
+            <td><button data-id=\"${item.id}\">Extract</button></td>
           `;
-          diagnosticsBody.appendChild(row);
+          row.querySelector("button").addEventListener("click", () => openExtract(item));
+          filesTableBody.appendChild(row);
         });
       }
 
-      function renderParsed(parsedLines) {
-        parsedBody.innerHTML = "";
-        if (!parsedLines.length) {
-          parsedBody.innerHTML = `<tr><td colspan="4">No parsed lines</td></tr>`;
-          return;
-        }
-        parsedLines.forEach((line) => {
-          line.fields.forEach((field, idx) => {
-            const row = document.createElement("tr");
-            row.innerHTML = `
-              <td>${idx === 0 ? line.line_number : ""}</td>
-              <td>${idx === 0 ? line.raw : ""}</td>
-              <td>${field.name}</td>
-              <td>${field.value}</td>
-            `;
-            parsedBody.appendChild(row);
-          });
-        });
+      function openExtract(item) {
+        selectedFileId = item.id;
+        extractFileEl.textContent = `File: ${item.originalName || item.paths?.original}`;
+        extractCard.classList.remove("hidden");
+        extractStatus.textContent = "";
+        extractLink.classList.add("hidden");
       }
+
+      document.getElementById("extract-btn").addEventListener("click", async () => {
+        if (!selectedFileId) return;
+        const partInput = document.getElementById("part-id");
+        extractStatus.textContent = "Extracting...";
+        extractLink.classList.add("hidden");
+        try {
+          const resp = await fetch(`/api/files/${selectedFileId}/extract-part`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId: partInput.value }),
+          });
+          if (!resp.ok) throw new Error(await resp.text());
+          const data = await resp.json();
+          extractStatus.textContent = "Extraction complete";
+          extractLink.classList.remove("hidden");
+          extractLink.innerHTML = `Download: <a href=\"${data.downloadUrl || "#"}\">${data.file}</a>`;
+        } catch (err) {
+          extractStatus.textContent = `Error: ${err.message}`;
+        }
+      });
+
+      refreshFiles();
     </script>
   </body>
 </html>

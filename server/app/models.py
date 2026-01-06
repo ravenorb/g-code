@@ -60,3 +60,30 @@ class ReleaseResponse(BaseModel):
 class ValidateRequest(BaseModel):
     job_id: Optional[str] = Field(default=None, description="Identifier for the g-code job.")
     gcode: str = Field(description="Raw g-code content to validate.")
+
+
+class UploadResponse(BaseModel):
+    id: str
+    original: str
+    meta: str
+    summary: dict
+    description: Optional[str] = None
+    downloadUrl: Optional[str] = None
+
+
+class FileItem(BaseModel):
+    id: str
+    originalName: Optional[str] = None
+    description: Optional[str] = None
+    summary: dict
+    paths: dict
+
+
+class ExtractPartRequest(BaseModel):
+    partId: str = Field(description="Operation ID or index to extract")
+
+
+class ExtractPartResponse(BaseModel):
+    file: str
+    meta: dict
+    downloadUrl: Optional[str] = None

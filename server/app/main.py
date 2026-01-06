@@ -18,6 +18,7 @@ from .models import (
     JobListing,
     ParsedFieldModel,
     ParsedLineModel,
+    PartDetailModel,
     PartSummaryModel,
     ReleaseRequest,
     ReleaseResponse,
@@ -27,6 +28,7 @@ from .models import (
     ValidationSummary,
 )
 from .release import ReleaseManager
+from .parser import extract_profile_block
 from .storage import StorageManager, extract_sheet_setup
 from .parser import load_from_bytes
 
@@ -246,4 +248,27 @@ def _to_part_model(part) -> PartSummaryModel:
         hkost_line=part.hkost_line,
         profile_line=part.profile_line,
         contours=part.contours,
+        x=part.x,
+        y=part.y,
+    )
+
+
+@app.get("/jobs/{job_id}/parts/{hkost_line}", response_model=PartDetailModel)
+async def part_detail(job_id: str, hkost_line: int, release_manager: ReleaseManager = Depends(get_release_manager)) -> PartDetailModel:
+    validation = release_manager.get_validation(job_id)
+    if validation is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    part = next((p for p in validation.parts if p.hkost_line == hkost_line), None)
+    if part is None:
+        raise HTTPException(status_code=404, detail="Part not found")
+
+    profile_block = extract_profile_block(validation.raw_lines, part.profile_line)
+    return PartDetailModel(
+        hkost_line=part.hkost_line,
+        profile_line=part.profile_line,
+        contours=part.contours,
+        x=part.x,
+        y=part.y,
+        profile_block=profile_block,
     )

@@ -53,6 +53,63 @@
       .hidden {
         display: none;
       }
+      .sheet-container {
+        margin-top: 1rem;
+        border: 1px dashed #cbd5e1;
+        border-radius: 8px;
+        background: #f8fafc;
+        padding: 0.5rem;
+      }
+      .sheet {
+        position: relative;
+        width: 100%;
+        max-width: 720px;
+        height: 420px;
+        margin: 0 auto;
+        background: #e2e8f0;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .sheet .part-dot {
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #0ea5e9;
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        border: 2px solid #0284c7;
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
+        transition: transform 120ms ease, background 120ms ease;
+      }
+      .sheet .part-dot:hover {
+        transform: scale(1.05);
+        background: #38bdf8;
+      }
+      .sheet .part-dot.selected {
+        background: #22c55e;
+        border-color: #15803d;
+      }
+      .part-detail {
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+      }
+      .part-detail pre {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 0.75rem;
+        border-radius: 6px;
+        overflow-x: auto;
+      }
     </style>
   </head>
   <body>
@@ -99,20 +156,13 @@
         <tbody></tbody>
       </table>
 
-      <h2>Parts</h2>
-      <table id="parts-table">
-        <thead>
-          <tr>
-            <th>HKOST Line</th>
-            <th>Profile Line</th>
-            <th>Contours</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <h2>Sheet Layout</h2>
+      <p id="sheet-info" class="hidden"></p>
+      <div class="sheet-container">
+        <div id="sheet" class="sheet"></div>
+      </div>
 
-      <div id="extract-status" class="hidden" style="margin-top: 1rem;"></div>
+      <div class="part-detail hidden" id="part-detail"></div>
     </div>
 
     <script>
@@ -123,9 +173,10 @@
       const storageEl = document.getElementById("storage");
       const diagnosticsBody = document.querySelector("#diagnostics-table tbody");
       const parsedBody = document.querySelector("#parsed-table tbody");
-      const partsBody = document.querySelector("#parts-table tbody");
-      const extractStatus = document.getElementById("extract-status");
-      let lastJob = null;
+      const sheet = document.getElementById("sheet");
+      const sheetInfo = document.getElementById("sheet-info");
+      const partDetail = document.getElementById("part-detail");
+      let lastJobId = null;
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -137,8 +188,11 @@
         resultsCard.classList.add("hidden");
         diagnosticsBody.innerHTML = "";
         parsedBody.innerHTML = "";
-        partsBody.innerHTML = "";
-        extractStatus.classList.add("hidden");
+        sheet.innerHTML = "";
+        sheetInfo.classList.add("hidden");
+        partDetail.classList.add("hidden");
+        partDetail.innerHTML = "";
+        lastJobId = null;
 
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
@@ -160,8 +214,8 @@
           renderSummary(data);
           renderDiagnostics(data.diagnostics);
           renderParsed(data.parsed_lines);
-          renderParts(data.parts);
-          renderStorage(data);
+          renderSheet(data.parts, data.job_id);
+          lastJobId = data.job_id;
 
           statusEl.textContent = "Validation completed.";
           resultsCard.classList.remove("hidden");
@@ -221,47 +275,92 @@
         });
       }
 
-      function renderParts(parts) {
-        partsBody.innerHTML = "";
-        extractStatus.classList.add("hidden");
-        if (!parts || !parts.length) {
-          partsBody.innerHTML = `<tr><td colspan="4">No parts detected</td></tr>`;
+      function renderSheet(parts, jobId) {
+        sheet.innerHTML = "";
+        sheetInfo.classList.add("hidden");
+        partDetail.classList.add("hidden");
+        partDetail.innerHTML = "";
+
+        if (!parts.length) {
+          sheetInfo.textContent = "No parts were detected in this file.";
+          sheetInfo.classList.remove("hidden");
           return;
         }
 
-        parts.forEach((part) => {
-          const row = document.createElement("tr");
-          row.innerHTML = `
-            <td>${part.hkost_line}</td>
-            <td>${part.profile_line ?? ""}</td>
-            <td>${part.contours}</td>
-            <td><button data-part="${part.hkost_line}">Extract</button></td>
-          `;
-          const button = row.querySelector("button");
-          button.addEventListener("click", () => handleExtract(part.hkost_line));
-          partsBody.appendChild(row);
+        const withCoords = parts.filter((p) => typeof p.x === "number" && typeof p.y === "number");
+        if (!withCoords.length) {
+          sheetInfo.textContent = "Parts were detected, but no HKOST coordinates were available to render a layout.";
+          sheetInfo.classList.remove("hidden");
+          return;
+        }
+
+        const xs = withCoords.map((p) => p.x);
+        const ys = withCoords.map((p) => p.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const padding = 30;
+        const width = sheet.clientWidth || 600;
+        const height = sheet.clientHeight || 420;
+        const rangeX = maxX - minX || 1;
+        const rangeY = maxY - minY || 1;
+        const scale = Math.min((width - padding * 2) / rangeX, (height - padding * 2) / rangeY);
+
+        withCoords.forEach((part) => {
+          const x = (part.x - minX) * scale + padding;
+          const y = (maxY - part.y) * scale + padding;
+          const dot = document.createElement("div");
+          dot.className = "part-dot";
+          dot.textContent = part.hkost_line.toString().slice(-2);
+          dot.style.left = `${x}px`;
+          dot.style.top = `${y}px`;
+          dot.title = `HKOST ${part.hkost_line} @ (${part.x}, ${part.y})`;
+          dot.dataset.hkost = part.hkost_line;
+          dot.addEventListener("click", () => handlePartClick(dot, jobId, part.hkost_line));
+          sheet.appendChild(dot);
         });
       }
 
-      async function handleExtract(partLabel) {
-        if (!lastJob) return;
-        extractStatus.classList.remove("hidden");
-        extractStatus.textContent = `Extracting part ${partLabel}...`;
+      async function handlePartClick(dot, jobId, hkostLine) {
+        if (!jobId) return;
+        sheet.querySelectorAll(".part-dot").forEach((el) => el.classList.remove("selected"));
+        dot.classList.add("selected");
+        partDetail.classList.add("hidden");
+        partDetail.textContent = "Loading part...";
+
         try {
-          const response = await fetch("/extract", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ job_id: lastJob.job_id, part_label: partLabel, margin: 0.0 }),
-          });
-          if (!response.ok) {
-            const detail = await response.text();
-            throw new Error(detail || "Extraction failed");
+          const resp = await fetch(`/jobs/${jobId}/parts/${hkostLine}`);
+          if (!resp.ok) {
+            throw new Error("Unable to fetch part details");
           }
-          const data = await response.json();
-          extractStatus.textContent = `Created ${data.filename} (sheet ${data.width.toFixed(3)} x ${data.height.toFixed(3)}) at ${data.stored_path}`;
+          const data = await resp.json();
+          renderPartDetail(data);
         } catch (err) {
-          extractStatus.textContent = `Error: ${err.message}`;
+          partDetail.textContent = `Error loading part: ${err.message}`;
+          partDetail.classList.remove("hidden");
         }
+      }
+
+      function renderPartDetail(part) {
+        const heading = document.createElement("h3");
+        heading.textContent = `Part HKOST ${part.hkost_line}`;
+
+        const meta = document.createElement("p");
+        meta.innerHTML = `
+          Profile line: <strong>${part.profile_line ?? "n/a"}</strong> ·
+          Contours: <strong>${part.contours}</strong> ·
+          Position: <strong>${part.x ?? "?"}</strong>, <strong>${part.y ?? "?"}</strong>
+        `;
+
+        const block = document.createElement("pre");
+        block.textContent = part.profile_block.join("\\n") || "No profile block available.";
+
+        partDetail.innerHTML = "";
+        partDetail.appendChild(heading);
+        partDetail.appendChild(meta);
+        partDetail.appendChild(block);
+        partDetail.classList.remove("hidden");
       }
     </script>
   </body>

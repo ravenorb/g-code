@@ -25,6 +25,7 @@ class ValidationResult:
     diagnostics: List[Diagnostic]
     parsed: List[ParsedLine]
     parts: List[PartSummary]
+    raw_lines: List[str]
 
     @property
     def has_blockers(self) -> bool:
@@ -53,7 +54,7 @@ class ValidationService:
             parsed = self._parser.parse(line_buffer)
         except ValueError as exc:
             diagnostics.append(Diagnostic(severity="error", message=str(exc)))
-            return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed, parts=parts)
+            return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed, parts=parts, raw_lines=line_buffer)
 
         for line in parsed:
             command = line.command.upper()
@@ -118,7 +119,7 @@ class ValidationService:
                     )
                 )
 
-        return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed, parts=parts)
+        return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed, parts=parts, raw_lines=line_buffer)
 
     def validate_bytes(self, job_id: str, content: bytes) -> ValidationResult:
         return self.validate_lines(job_id=job_id, lines=load_from_bytes(content))

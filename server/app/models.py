@@ -34,6 +34,12 @@ class PartSummaryModel(BaseModel):
     hkost_line: int = Field(description="Line label for the HKOST declaration (e.g., 10000).")
     profile_line: Optional[int] = Field(default=None, description="Profile line label referenced by HKOST.")
     contours: int = Field(description="Number of G-code contour lines between HKCUT and HKSTO.")
+    x: Optional[float] = Field(default=None, description="X coordinate from the HKOST declaration.")
+    y: Optional[float] = Field(default=None, description="Y coordinate from the HKOST declaration.")
+
+
+class PartDetailModel(PartSummaryModel):
+    profile_block: List[str] = Field(default_factory=list, description="Profile block lines for the selected part.")
 
 
 class ValidationResponse(BaseModel):

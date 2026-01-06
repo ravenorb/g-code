@@ -25,6 +25,8 @@ class PartSummary:
     hkost_line: int
     profile_line: Optional[int]
     contours: int
+    x: Optional[float] = None
+    y: Optional[float] = None
 
 
 class HKParser:
@@ -77,6 +79,7 @@ class HKParser:
                 continue
 
             hkost_line = int(match.group("label"))
+            hkost_params = _parse_hkost_params(match.group("params"))
             profile_line = _extract_profile_line(match.group("params"))
             contours = self._count_contours(normalized_lines, label_to_index.get(profile_line))
             parts.append(
@@ -84,6 +87,8 @@ class HKParser:
                     hkost_line=hkost_line,
                     profile_line=profile_line,
                     contours=contours,
+                    x=hkost_params[0] if len(hkost_params) > 0 else None,
+                    y=hkost_params[1] if len(hkost_params) > 1 else None,
                 )
             )
 
@@ -132,3 +137,38 @@ def _extract_profile_line(params_text: str) -> Optional[int]:
         return int(float(params[3]))
     except ValueError:
         return None
+
+
+def _parse_hkost_params(params_text: str) -> List[float]:
+    parts = []
+    for param in params_text.split(","):
+        cleaned = param.strip()
+        if not cleaned:
+            continue
+        try:
+            parts.append(float(cleaned))
+        except ValueError:
+            continue
+    return parts
+
+
+def extract_profile_block(lines: List[str], profile_line: Optional[int]) -> List[str]:
+    if profile_line is None:
+        return []
+
+    normalized_profile = f"N{profile_line}".upper()
+    start_index: Optional[int] = None
+    for idx, line in enumerate(lines):
+        if line.strip().upper().startswith(normalized_profile):
+            start_index = idx
+            break
+
+    if start_index is None:
+        return []
+
+    block: List[str] = []
+    for line in lines[start_index:]:
+        block.append(line)
+        if "HKSTO" in line.upper():
+            break
+    return block

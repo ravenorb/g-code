@@ -74,3 +74,27 @@ async def test_upload_reports_part_and_contour_counts(client):
     assert len(body["parts"]) == 2
     contours = [part["contours"] for part in body["parts"]]
     assert contours == [2, 1]
+
+
+@pytest.mark.anyio
+async def test_part_detail_returns_profile_block(client):
+    gcode = (
+        "N10000 HKOST(0.3,6.8,0.00,10001,1,0,0,0)\n"
+        "N1 M3 S1000\n"
+        "N10001 HKSTR(1,1,0,0,0,0,0,0)\n"
+        "HKCUT(0,0,0)\n"
+        "G1 X0 Y0\n"
+        "G1 X1 Y1\n"
+        "HKSTO(0,0,0)\n"
+    )
+
+    validate_resp = await client.post("/validate", json={"gcode": gcode})
+    assert validate_resp.status_code == 200
+    job_id = validate_resp.json()["job_id"]
+
+    detail_resp = await client.get(f"/jobs/{job_id}/parts/10000")
+    assert detail_resp.status_code == 200
+    part = detail_resp.json()
+    assert part["profile_line"] == 10001
+    assert any(line.startswith("N10001 HKSTR") for line in part["profile_block"])
+    assert any("HKSTO" in line for line in part["profile_block"])

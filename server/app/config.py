@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Set
 
 
@@ -24,6 +26,7 @@ class ServiceConfig:
     rules: CommandRules
     audit_log_name: str = "logs/audit.log"
     app_log_name: str = "logs/app.log"
+    storage_root: Path = Path("storage")
 
 
 DEFAULT_RULES = CommandRules(
@@ -52,4 +55,17 @@ DEFAULT_RULES = CommandRules(
 
 DEFAULT_LIMITS = ParserLimits()
 
-DEFAULT_CONFIG = ServiceConfig(limits=DEFAULT_LIMITS, rules=DEFAULT_RULES)
+def load_config_from_env() -> ServiceConfig:
+    storage_root = Path(os.getenv("STORAGE_ROOT", "storage"))
+    audit_log = os.getenv("AUDIT_LOG_PATH", "logs/audit.log")
+    app_log = os.getenv("APP_LOG_PATH", "logs/app.log")
+    return ServiceConfig(
+        limits=DEFAULT_LIMITS,
+        rules=DEFAULT_RULES,
+        audit_log_name=audit_log,
+        app_log_name=app_log,
+        storage_root=storage_root,
+    )
+
+
+DEFAULT_CONFIG = load_config_from_env()

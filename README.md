@@ -5,6 +5,13 @@ G-code parser and storage
 
 A lightweight FastAPI service that validates HK G-code uploads, enforces safety limits, and records production releases.
 
+The service now also:
+
+- Stores uploaded programs and generated metadata on a configurable storage root (NAS mount friendly).
+- Captures an operator-supplied description alongside parsed parts/setup info.
+- Supports extracting a single part to its own program, re-based at the sheet origin with a right-sized HKINI.
+- Provides a simple browser UI at `/` for uploads, validation results, and one-click part extraction.
+
 ### Quickstart
 
 ```bash
@@ -18,5 +25,14 @@ uvicorn server.app.main:app --reload
 ```bash
 docker-compose up --build
 ```
+
+You can override the storage location (for example, to point at an NAS mount) by setting `STORAGE_ROOT`:
+
+```bash
+STORAGE_ROOT=/mnt/nas/gcode \
+  docker-compose up --build
+```
+
+With the stack running, open http://localhost:8000 to access the upload UI. Upload a file, add a description, review the parsed diagnostics/parts, and click “Extract” on any part to generate a standalone file at the storage root.
 
 The API will be available on [http://localhost:8000](http://localhost:8000).

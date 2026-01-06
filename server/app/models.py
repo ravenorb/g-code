@@ -60,3 +60,37 @@ class ReleaseResponse(BaseModel):
 class ValidateRequest(BaseModel):
     job_id: Optional[str] = Field(default=None, description="Identifier for the g-code job.")
     gcode: str = Field(description="Raw g-code content to validate.")
+
+
+class UploadResponse(ValidationResponse):
+    stored_path: Optional[str] = Field(default=None, description="Filesystem path of the uploaded program.")
+    meta_path: Optional[str] = Field(default=None, description="Path to the generated metadata file.")
+    description: Optional[str] = Field(default=None, description="User-provided description of the upload.")
+    uploaded_at: Optional[datetime] = Field(default=None, description="Timestamp of upload.")
+
+
+class ExtractRequest(BaseModel):
+    job_id: str = Field(description="Existing job identifier (hash) to extract from.")
+    part_label: int = Field(description="HKOST label of the part to extract.")
+    margin: float = Field(default=0.0, description="Additional margin to add around the part when sizing the sheet.")
+    description: Optional[str] = Field(default=None, description="Optional description to store with the extracted part.")
+
+
+class ExtractResponse(BaseModel):
+    job_id: str
+    part_label: int
+    stored_path: str
+    meta_path: str
+    width: float
+    height: float
+    filename: str
+
+
+class JobListing(BaseModel):
+    jobId: str
+    originalFile: str
+    storedPath: str
+    description: Optional[str] = None
+    uploadedAt: Optional[str] = None
+    summary: Optional[Any] = None
+    parts: Optional[Any] = None

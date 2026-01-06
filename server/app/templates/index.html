@@ -60,7 +60,11 @@
     <div class="card">
       <form id="upload-form">
         <label for="file">Select G-code file:</label>
-        <input type="file" id="file" name="file" accept=".gcode,.txt" required />
+        <input type="file" id="file" name="file" accept=".gcode,.txt,.mpf,.nc,.tap" required />
+        <div style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
+          <label for="description">Description:</label><br />
+          <textarea id="description" name="description" rows="3" style="width: 100%;" placeholder="Describe the file contents"></textarea>
+        </div>
         <button type="submit">Upload & Validate</button>
       </form>
       <p id="status" class="hidden"></p>
@@ -69,6 +73,7 @@
     <div class="card hidden" id="results-card">
       <h2>Diagnostics</h2>
       <p id="summary"></p>
+      <p id="storage"></p>
       <table id="diagnostics-table">
         <thead>
           <tr>
@@ -93,6 +98,21 @@
         </thead>
         <tbody></tbody>
       </table>
+
+      <h2>Parts</h2>
+      <table id="parts-table">
+        <thead>
+          <tr>
+            <th>HKOST Line</th>
+            <th>Profile Line</th>
+            <th>Contours</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div id="extract-status" class="hidden" style="margin-top: 1rem;"></div>
     </div>
 
     <script>
@@ -100,8 +120,12 @@
       const statusEl = document.getElementById("status");
       const resultsCard = document.getElementById("results-card");
       const summaryEl = document.getElementById("summary");
+      const storageEl = document.getElementById("storage");
       const diagnosticsBody = document.querySelector("#diagnostics-table tbody");
       const parsedBody = document.querySelector("#parsed-table tbody");
+      const partsBody = document.querySelector("#parts-table tbody");
+      const extractStatus = document.getElementById("extract-status");
+      let lastJob = null;
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -113,9 +137,12 @@
         resultsCard.classList.add("hidden");
         diagnosticsBody.innerHTML = "";
         parsedBody.innerHTML = "";
+        partsBody.innerHTML = "";
+        extractStatus.classList.add("hidden");
 
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
+        formData.append("description", document.getElementById("description").value);
 
         try {
           const response = await fetch("/upload", {
@@ -129,9 +156,12 @@
           }
 
           const data = await response.json();
+          lastJob = data;
           renderSummary(data);
           renderDiagnostics(data.diagnostics);
           renderParsed(data.parsed_lines);
+          renderParts(data.parts);
+          renderStorage(data);
 
           statusEl.textContent = "Validation completed.";
           resultsCard.classList.remove("hidden");
@@ -142,6 +172,14 @@
 
       function renderSummary(data) {
         summaryEl.textContent = `Job: ${data.job_id} — Errors: ${data.summary.errors}, Warnings: ${data.summary.warnings}, Lines: ${data.summary.lines}`;
+      }
+
+      function renderStorage(data) {
+        const storageBits = [];
+        if (data.stored_path) storageBits.push(`Stored: ${data.stored_path}`);
+        if (data.meta_path) storageBits.push(`Meta: ${data.meta_path}`);
+        if (data.uploaded_at) storageBits.push(`Uploaded: ${data.uploaded_at}`);
+        storageEl.textContent = storageBits.join(" | ");
       }
 
       function renderDiagnostics(diagnostics) {
@@ -181,6 +219,49 @@
             parsedBody.appendChild(row);
           });
         });
+      }
+
+      function renderParts(parts) {
+        partsBody.innerHTML = "";
+        extractStatus.classList.add("hidden");
+        if (!parts || !parts.length) {
+          partsBody.innerHTML = `<tr><td colspan="4">No parts detected</td></tr>`;
+          return;
+        }
+
+        parts.forEach((part) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${part.hkost_line}</td>
+            <td>${part.profile_line ?? ""}</td>
+            <td>${part.contours}</td>
+            <td><button data-part="${part.hkost_line}">Extract</button></td>
+          `;
+          const button = row.querySelector("button");
+          button.addEventListener("click", () => handleExtract(part.hkost_line));
+          partsBody.appendChild(row);
+        });
+      }
+
+      async function handleExtract(partLabel) {
+        if (!lastJob) return;
+        extractStatus.classList.remove("hidden");
+        extractStatus.textContent = `Extracting part ${partLabel}...`;
+        try {
+          const response = await fetch("/extract", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ job_id: lastJob.job_id, part_label: partLabel, margin: 0.0 }),
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(detail || "Extraction failed");
+          }
+          const data = await response.json();
+          extractStatus.textContent = `Created ${data.filename} (sheet ${data.width.toFixed(3)} x ${data.height.toFixed(3)}) at ${data.stored_path}`;
+        } catch (err) {
+          extractStatus.textContent = `Error: ${err.message}`;
+        }
       }
     </script>
   </body>

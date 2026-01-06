@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  hk-parser:
+    build: .
+    image: hk-parser-service:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - LOG_LEVEL=info
+    volumes:
+      - ./logs:/app/logs

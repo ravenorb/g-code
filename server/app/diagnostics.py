@@ -1,0 +1,125 @@
+from __future__ import annotations
+
+import hashlib
+import logging
+from dataclasses import dataclass
+from typing import Iterable, List, Optional
+
+from .config import ServiceConfig
+from .parser import HKParser, ParsedLine, load_from_bytes
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Diagnostic:
+    severity: str
+    message: str
+    line: Optional[int] = None
+    code: Optional[str] = None
+
+
+@dataclass
+class ValidationResult:
+    job_id: str
+    diagnostics: List[Diagnostic]
+    parsed: List[ParsedLine]
+
+    @property
+    def has_blockers(self) -> bool:
+        return any(d.severity == "error" for d in self.diagnostics)
+
+    @property
+    def summary(self) -> dict:
+        return {
+            "errors": len([d for d in self.diagnostics if d.severity == "error"]),
+            "warnings": len([d for d in self.diagnostics if d.severity == "warning"]),
+            "lines": len(self.parsed),
+        }
+
+
+class ValidationService:
+    def __init__(self, config: ServiceConfig):
+        self._config = config
+        self._parser = HKParser()
+
+    def validate_lines(self, job_id: str, lines: Iterable[str]) -> ValidationResult:
+        diagnostics: List[Diagnostic] = []
+        parsed: List[ParsedLine] = []
+        try:
+            parsed = self._parser.parse(lines)
+        except ValueError as exc:
+            diagnostics.append(Diagnostic(severity="error", message=str(exc)))
+            return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed)
+
+        for line in parsed:
+            command = line.command.upper()
+            if command in self._config.rules.blacklist:
+                diagnostics.append(
+                    Diagnostic(
+                        severity="error",
+                        message=f"Command {command} is not allowed (blacklisted)",
+                        line=line.line_number,
+                        code="blacklisted_command",
+                    )
+                )
+            elif command not in self._config.rules.whitelist:
+                diagnostics.append(
+                    Diagnostic(
+                        severity="warning",
+                        message=f"Command {command} is outside the approved whitelist",
+                        line=line.line_number,
+                        code="nonwhitelisted_command",
+                    )
+                )
+
+            feed = line.params.get("F")
+            if feed is not None:
+                if feed > self._config.limits.max_feed_rate:
+                    diagnostics.append(
+                        Diagnostic(
+                            severity="error",
+                            message=f"Feed rate {feed} exceeds limit {self._config.limits.max_feed_rate}",
+                            line=line.line_number,
+                            code="feed_rate_high",
+                        )
+                    )
+                elif feed < self._config.limits.min_feed_rate:
+                    diagnostics.append(
+                        Diagnostic(
+                            severity="warning",
+                            message=f"Feed rate {feed} is below minimum {self._config.limits.min_feed_rate}",
+                            line=line.line_number,
+                            code="feed_rate_low",
+                        )
+                    )
+
+            power = line.params.get("S") or line.params.get("P")
+            if power is not None:
+                if power > self._config.limits.max_power:
+                    diagnostics.append(
+                        Diagnostic(
+                            severity="error",
+                            message=f"Power {power} exceeds limit {self._config.limits.max_power}",
+                            line=line.line_number,
+                            code="power_high",
+                        )
+                    )
+                elif power < self._config.limits.min_power:
+                    diagnostics.append(
+                        Diagnostic(
+                            severity="warning",
+                            message=f"Power {power} is below minimum {self._config.limits.min_power}",
+                            line=line.line_number,
+                            code="power_low",
+                        )
+                    )
+
+        return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed)
+
+    def validate_bytes(self, job_id: str, content: bytes) -> ValidationResult:
+        return self.validate_lines(job_id=job_id, lines=load_from_bytes(content))
+
+
+def hash_payload(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()

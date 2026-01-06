@@ -19,10 +19,22 @@ class ValidationSummary(BaseModel):
     lines: int
 
 
+class ParsedFieldModel(BaseModel):
+    name: str
+    value: object
+
+
+class ParsedLineModel(BaseModel):
+    line_number: int
+    raw: str
+    fields: List[ParsedFieldModel]
+
+
 class ValidationResponse(BaseModel):
     job_id: str
     diagnostics: List[DiagnosticModel]
     summary: ValidationSummary
+    parsed_lines: List[ParsedLineModel] = Field(default_factory=list)
 
 
 class ReleaseRequest(BaseModel):

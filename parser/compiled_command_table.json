@@ -1,0 +1,130 @@
+[
+  {
+    "command": "G1",
+    "description": "Linear interpolation move",
+    "arguments": [
+      "X",
+      "Y",
+      "Z",
+      "F"
+    ]
+  },
+  {
+    "command": "G2",
+    "description": "Clockwise circular interpolation",
+    "arguments": [
+      "X",
+      "Y",
+      "Z",
+      "I",
+      "J",
+      "K",
+      "F",
+      "R"
+    ]
+  },
+  {
+    "command": "G3",
+    "description": "Counter-clockwise circular interpolation",
+    "arguments": [
+      "X",
+      "Y",
+      "Z",
+      "I",
+      "J",
+      "K",
+      "F",
+      "R"
+    ]
+  },
+  {
+    "command": "HKCUT",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKEND",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKINI",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKLDB",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKLEA",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKOST",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKPED",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKPIE",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKPPP",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKSTO",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "HKSTR",
+    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "arguments": [
+      "vendor_params"
+    ]
+  },
+  {
+    "command": "M30",
+    "description": "Program end and rewind",
+    "arguments": []
+  },
+  {
+    "command": "WHEN",
+    "description": "Conditional execution of a subsequent action",
+    "arguments": [
+      "condition",
+      "action"
+    ]
+  }
+]

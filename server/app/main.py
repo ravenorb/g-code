@@ -9,7 +9,16 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from .config import DEFAULT_CONFIG, ServiceConfig
 from .diagnostics import ValidationService, hash_payload
-from .models import DiagnosticModel, ReleaseRequest, ReleaseResponse, ValidateRequest, ValidationResponse, ValidationSummary
+from .models import (
+    DiagnosticModel,
+    ParsedFieldModel,
+    ParsedLineModel,
+    ReleaseRequest,
+    ReleaseResponse,
+    ValidateRequest,
+    ValidationResponse,
+    ValidationSummary,
+)
 from .release import ReleaseManager
 
 app = FastAPI(title="HK Parser Service", version="0.1.0")

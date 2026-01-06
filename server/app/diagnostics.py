@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional
 
 from .config import ServiceConfig
-from .parser import HKParser, ParsedLine, load_from_bytes
+from .parser import HKParser, ParsedLine, PartSummary, load_from_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ class ValidationResult:
     job_id: str
     diagnostics: List[Diagnostic]
     parsed: List[ParsedLine]
+    parts: List[PartSummary]
 
     @property
     def has_blockers(self) -> bool:
@@ -46,11 +47,13 @@ class ValidationService:
     def validate_lines(self, job_id: str, lines: Iterable[str]) -> ValidationResult:
         diagnostics: List[Diagnostic] = []
         parsed: List[ParsedLine] = []
+        line_buffer = list(lines)
+        parts = self._parser.summarize_parts(line_buffer)
         try:
-            parsed = self._parser.parse(lines)
+            parsed = self._parser.parse(line_buffer)
         except ValueError as exc:
             diagnostics.append(Diagnostic(severity="error", message=str(exc)))
-            return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed)
+            return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed, parts=parts)
 
         for line in parsed:
             command = line.command.upper()
@@ -112,10 +115,10 @@ class ValidationService:
                             message=f"Power {power} is below minimum {self._config.limits.min_power}",
                             line=line.line_number,
                             code="power_low",
-                        )
                     )
+                )
 
-        return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed)
+        return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed, parts=parts)
 
     def validate_bytes(self, job_id: str, content: bytes) -> ValidationResult:
         return self.validate_lines(job_id=job_id, lines=load_from_bytes(content))

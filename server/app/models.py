@@ -21,7 +21,7 @@ class ValidationSummary(BaseModel):
 
 class ParsedFieldModel(BaseModel):
     name: str
-    value: object
+    value: Any
 
 
 class ParsedLineModel(BaseModel):
@@ -30,12 +30,18 @@ class ParsedLineModel(BaseModel):
     fields: List[ParsedFieldModel]
 
 
+class PartSummaryModel(BaseModel):
+    hkost_line: int = Field(description="Line label for the HKOST declaration (e.g., 10000).")
+    profile_line: Optional[int] = Field(default=None, description="Profile line label referenced by HKOST.")
+    contours: int = Field(description="Number of G-code contour lines between HKCUT and HKSTO.")
+
+
 class ValidationResponse(BaseModel):
     job_id: str
     diagnostics: List[DiagnosticModel]
     summary: ValidationSummary
     parsed_lines: List[ParsedLineModel] = Field(default_factory=list)
-    parsed_lines: List["ParsedLineModel"]
+    parts: List[PartSummaryModel] = Field(default_factory=list)
 
 
 class ReleaseRequest(BaseModel):
@@ -54,14 +60,3 @@ class ReleaseResponse(BaseModel):
 class ValidateRequest(BaseModel):
     job_id: Optional[str] = Field(default=None, description="Identifier for the g-code job.")
     gcode: str = Field(description="Raw g-code content to validate.")
-
-
-class ParsedFieldModel(BaseModel):
-    name: str
-    value: Any
-
-
-class ParsedLineModel(BaseModel):
-    line_number: int
-    raw: str
-    fields: List[ParsedFieldModel]

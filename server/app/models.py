@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +35,7 @@ class ValidationResponse(BaseModel):
     diagnostics: List[DiagnosticModel]
     summary: ValidationSummary
     parsed_lines: List[ParsedLineModel] = Field(default_factory=list)
+    parsed_lines: List["ParsedLineModel"]
 
 
 class ReleaseRequest(BaseModel):
@@ -53,3 +54,14 @@ class ReleaseResponse(BaseModel):
 class ValidateRequest(BaseModel):
     job_id: Optional[str] = Field(default=None, description="Identifier for the g-code job.")
     gcode: str = Field(description="Raw g-code content to validate.")
+
+
+class ParsedFieldModel(BaseModel):
+    name: str
+    value: Any
+
+
+class ParsedLineModel(BaseModel):
+    line_number: int
+    raw: str
+    fields: List[ParsedFieldModel]

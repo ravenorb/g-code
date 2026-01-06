@@ -13,6 +13,7 @@ from .models import (
     DiagnosticModel,
     ParsedFieldModel,
     ParsedLineModel,
+    PartSummaryModel,
     ReleaseRequest,
     ReleaseResponse,
     ValidateRequest,
@@ -145,9 +146,18 @@ def _build_validation_response(result) -> ValidationResponse:
             )
             for line in result.parsed
         ],
+        parts=[_to_part_model(part) for part in result.parts],
     )
 
 
 def _record_audit(entry: dict) -> None:
     with open(DEFAULT_CONFIG.audit_log_name, "a", encoding="utf-8") as audit_log:
         audit_log.write(f"{datetime.now(timezone.utc).isoformat()} {entry}\n")
+
+
+def _to_part_model(part) -> PartSummaryModel:
+    return PartSummaryModel(
+        hkost_line=part.hkost_line,
+        profile_line=part.profile_line,
+        contours=part.contours,
+    )

@@ -22,9 +22,6 @@ async def test_upload_validation_flags_blacklist(client):
     messages = [d["message"] for d in body["diagnostics"]]
     assert any("blacklisted" in msg.lower() for msg in messages)
     assert body["summary"]["errors"] >= 1
-    assert body["parsed_lines"]
-    first_line_fields = body["parsed_lines"][0]["fields"]
-    assert any(field["name"] == "command" for field in first_line_fields)
 
 
 @pytest.mark.anyio
@@ -51,10 +48,3 @@ async def test_release_rejects_invalid_job(client):
 
     release_resp = await client.post("/release", json={"job_id": "too_fast", "approver": "qa"})
     assert release_resp.status_code == 409
-
-
-@pytest.mark.anyio
-async def test_landing_page_served(client):
-    resp = await client.get("/")
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]

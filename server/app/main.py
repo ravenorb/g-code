@@ -7,19 +7,9 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 from .config import DEFAULT_CONFIG, ServiceConfig
 from .diagnostics import ValidationService, hash_payload
-from .models import (
-    DiagnosticModel,
-    ParsedFieldModel,
-    ParsedLineModel,
-    ReleaseRequest,
-    ReleaseResponse,
-    ValidateRequest,
-    ValidationResponse,
-    ValidationSummary,
-)
+from .models import DiagnosticModel, ReleaseRequest, ReleaseResponse, ValidateRequest, ValidationResponse, ValidationSummary
 from .release import ReleaseManager
 
 app = FastAPI(title="HK Parser Service", version="0.1.0")
@@ -67,12 +57,6 @@ app.add_middleware(
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
-
-
-@app.get("/", response_class=HTMLResponse)
-async def landing_page() -> HTMLResponse:
-    template_path = Path(__file__).parent / "templates" / "index.html"
-    return HTMLResponse(template_path.read_text(encoding="utf-8"))
 
 
 @app.post("/upload", response_model=ValidationResponse)

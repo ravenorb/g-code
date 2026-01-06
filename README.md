@@ -19,4 +19,4 @@ uvicorn server.app.main:app --reload
 docker-compose up --build
 ```
 
-The API and upload UI will be available on [http://localhost:8000](http://localhost:8000).
+The API will be available on [http://localhost:8000](http://localhost:8000).

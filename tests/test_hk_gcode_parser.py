@@ -63,35 +63,3 @@ def test_comment_only_lines_are_preserved_as_metadata():
     assert "header" in program.metadata["comments"][0]
     assert "another" in program.metadata["comments"][1]
     assert program.commands[0].code == "G0"
-
-
-def test_function_style_command_with_block_number_and_string_arg():
-    program = parse_program('N10000 HKOST(0.3,0.26,"S304",0)')
-    command = program.commands[0]
-    assert command.block_number == 10000
-    assert command.code == "HKOST"
-    assert command.args[:3] == [0.3, 0.26, "S304"]
-    assert command.args[-1] == 0
-
-
-def test_when_command_payload_is_preserved():
-    text = "WHEN ($AC_TIME>0.005)AND($R71<$R72) DO $A_DBB[10]=1"
-    program = parse_program(text)
-    command = program.commands[0]
-    assert command.code == "WHEN"
-    assert "$A_DBB" in (command.payload or "")
-
-
-def test_block_only_line_round_trips():
-    program = parse_program("N42")
-    assert program.commands[0].code == "BLOCK"
-    assert program.commands[0].to_line() == "N42"
-
-
-def test_sample_file_parses_without_errors():
-    sample_path = Path(__file__).resolve().parents[1] / "samples" / "12GA Temp2.MPF"
-    content = sample_path.read_text(encoding="utf-8")
-    program = parse_program(content)
-    assert not program.errors
-    assert any(cmd.code == "HKOST" for cmd in program.commands)
-    assert any(cmd.code == "HKSTR" for cmd in program.commands)

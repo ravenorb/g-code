@@ -125,6 +125,17 @@ def _build_validation_response(result) -> ValidationResponse:
         job_id=result.job_id,
         diagnostics=[DiagnosticModel(**diag.__dict__) for diag in result.diagnostics],
         summary=ValidationSummary(**result.summary),
+        parsed_lines=[
+            ParsedLineModel(
+                line_number=line.line_number,
+                raw=line.raw,
+                fields=[
+                    ParsedFieldModel(name="command", value=line.command),
+                    *[ParsedFieldModel(name=name, value=value) for name, value in line.params.items()],
+                ],
+            )
+            for line in result.parsed
+        ],
     )
 
 

@@ -95,6 +95,13 @@ var iOutput = createVariable({ prefix: "I" }, ijFormat);
 var jOutput = createVariable({ prefix: "J" }, ijFormat);
 function fmt(x) { return xyzFormat.format(x); }
 
+// Output helpers
+function writeBlock() {
+  if (arguments.length > 0) {
+    writeWords(arguments);
+  }
+}
+
 // Units
 function toOutUnits(v) {
   var forceInch = properties.forceInchOutput && (properties.forceInchOutput.value !== undefined ? properties.forceInchOutput.value : properties.forceInchOutput);

@@ -4,8 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
-LINE_RE = re.compile(r"^(?P<command>[A-Z]\d+)(?P<params>(?:\s+[A-Za-z][-+]?\d*\.?\d*)*)")
-PARAM_RE = re.compile(r"([A-Za-z])([-+]?\d*\.?\d*)")
+LINE_RE = re.compile(r"^(?P<command>[A-Z]+[0-9]*[A-Z]?)(?P<rest>.*)$")
+PARAM_RE = re.compile(r"(?<![A-Za-z0-9_$])([A-Za-z])([-+]?(?:\d+(?:\.\d*)?|\.\d+))")
 HKOST_RE = re.compile(r"^N(?P<label>\d+)\s+HKOST\((?P<params>[^)]*)\)", re.IGNORECASE)
 LINE_LABEL_RE = re.compile(r"^N(?P<label>\d+)", re.IGNORECASE)
 
@@ -39,12 +39,16 @@ class HKParser:
             if not normalized or normalized.startswith(";"):
                 continue
 
-            match = LINE_RE.match(normalized)
+            without_label = _strip_line_label(normalized)
+            if not without_label:
+                continue
+
+            match = LINE_RE.match(without_label)
             if not match:
                 raise ValueError(f"Unable to parse line {idx}: {normalized}")
 
-            command = match.group("command")
-            params_str = match.group("params") or ""
+            command = match.group("command").upper()
+            params_str = match.group("rest") or ""
             params: Dict[str, float] = {}
             for param_match in PARAM_RE.finditer(params_str):
                 key, value = param_match.groups()
@@ -127,6 +131,13 @@ class HKParser:
 def load_from_bytes(content: bytes) -> List[str]:
     text = content.decode("utf-8", errors="ignore")
     return text.splitlines()
+
+
+def _strip_line_label(line: str) -> str:
+    match = LINE_LABEL_RE.match(line)
+    if not match:
+        return line
+    return line[match.end() :].lstrip()
 
 
 def _extract_profile_line(params_text: str) -> Optional[int]:

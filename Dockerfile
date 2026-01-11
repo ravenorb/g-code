@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /app/requirements.txt
 
 COPY server /app/server
+COPY parser /app/parser
 
 EXPOSE 8000
 

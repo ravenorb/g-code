@@ -45,12 +45,18 @@ class PartDetailModel(PartSummaryModel):
     profile_block: List[str] = Field(default_factory=list, description="Profile block lines for the selected part.")
 
 
+class SheetSetupModel(BaseModel):
+    sheetX: Optional[float] = Field(default=None, description="Sheet width from HKINI.")
+    sheetY: Optional[float] = Field(default=None, description="Sheet height from HKINI.")
+
+
 class ValidationResponse(BaseModel):
     job_id: str
     diagnostics: List[DiagnosticModel]
     summary: ValidationSummary
     parsed_lines: List[ParsedLineModel] = Field(default_factory=list)
     parts: List[PartSummaryModel] = Field(default_factory=list)
+    setup: Optional[SheetSetupModel] = Field(default=None, description="Sheet setup details parsed from HKINI.")
 
 
 class ReleaseRequest(BaseModel):

@@ -227,6 +227,9 @@ def _build_validation_payload(result) -> dict:
             ParsedLineModel(
                 line_number=line.line_number,
                 raw=line.raw,
+                command=line.command,
+                description=line.description,
+                arguments=line.arguments,
                 fields=[
                     ParsedFieldModel(name="command", value=line.command),
                     *[ParsedFieldModel(name=name, value=value) for name, value in line.params.items()],

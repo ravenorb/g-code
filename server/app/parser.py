@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
+from parser.command_catalog import describe_command
+
 LINE_RE = re.compile(r"^(?P<command>[A-Z]+[0-9]*[A-Z]?)(?P<rest>.*)$")
 PARAM_RE = re.compile(r"(?<![A-Za-z0-9_$])([A-Za-z])([-+]?(?:\d+(?:\.\d*)?|\.\d+))")
 HKOST_RE = re.compile(r"^N(?P<label>\d+)\s+HKOST\((?P<params>[^)]*)\)", re.IGNORECASE)
@@ -16,6 +18,8 @@ class ParsedLine:
     raw: str
     command: str
     params: Dict[str, float]
+    description: str
+    arguments: List[str]
 
 
 @dataclass
@@ -58,7 +62,17 @@ class HKParser:
                     except ValueError as exc:  # pragma: no cover - defensive
                         raise ValueError(f"Invalid numeric value on line {idx}") from exc
 
-            parsed.append(ParsedLine(line_number=idx, raw=normalized, command=command, params=params))
+            metadata = describe_command(command)
+            parsed.append(
+                ParsedLine(
+                    line_number=idx,
+                    raw=normalized,
+                    command=command,
+                    params=params,
+                    description=metadata.description,
+                    arguments=list(metadata.arguments),
+                )
+            )
         return parsed
 
     def summarize_parts(self, lines: Iterable[str]) -> List[PartSummary]:

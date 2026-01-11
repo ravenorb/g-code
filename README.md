@@ -26,6 +26,13 @@ uvicorn server.app.main:app --reload
 docker-compose up --build
 ```
 
+If the build fails with a BuildKit snapshot error (for example, "parent snapshot ... does not exist"), clear the builder cache and retry or temporarily disable BuildKit:
+
+```bash
+docker builder prune
+DOCKER_BUILDKIT=0 docker-compose up --build
+```
+
 You can override the storage location (for example, to point at an NAS mount) by setting `STORAGE_ROOT`:
 
 ```bash

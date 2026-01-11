@@ -51,7 +51,7 @@ def test_build_command_table_includes_descriptions():
 
     assert by_command["G1"]["description"].startswith("Linear interpolation")
     assert by_command["WHEN"]["arguments"] == ["condition", "action"]
-    assert "vendor-specific" in by_command["HKCUT"]["description"].lower()
+    assert "start cutting" in by_command["HKCUT"]["description"].lower()
 
 
 def test_compiled_command_table_matches_generated():

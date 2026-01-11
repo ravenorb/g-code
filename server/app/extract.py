@@ -45,8 +45,8 @@ def extract_part_program(content: str, part_label: int, margin: float = 0.0) -> 
     # Collect supporting header lines
     hkldb_line = _first_match(lines, r"HKLDB")
     hkini_line = _first_match(lines, r"HKINI")
-    hkppp_line = _find_hkppp_after(lines, hkost_idx)
-    hkend_line = _first_match(lines, r"HKEND") or "HKEND(0,0,0)"
+    hkppp_line = _find_hkppp_after(lines, hkost_idx) or "HKPPP"
+    hkend_line = "HKEND(0,0,0)"
 
     part_lines = lines[block_start : block_end + 1]
     min_x, min_y, max_x, max_y = _bounds_for_block(part_lines)
@@ -67,8 +67,7 @@ def extract_part_program(content: str, part_label: int, margin: float = 0.0) -> 
     else:
         output.append(f"HKINI(0,{_format_float(width)},{_format_float(height)},0,0,0)")
     output.append(translated_hkost)
-    if hkppp_line:
-        output.append(hkppp_line)
+    output.append(hkppp_line)
     output.extend(translated_block)
     output.append(hkend_line)
     output.append("M30")

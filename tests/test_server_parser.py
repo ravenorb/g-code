@@ -11,7 +11,8 @@ def test_parse_handles_vendor_macros():
     parsed = parser.parse(['; header', 'N1', 'HKLDB(2,"S304",3,0,0,0)', "HKPPP"])
 
     assert [line.command for line in parsed] == ["HKLDB", "HKPPP"]
-    assert parsed[0].params["S"] == 304.0
+    assert parsed[0].params["technology"] == 2.0
+    assert parsed[0].params["material_name"] == "S304"
 
 
 def test_parse_strips_line_numbers_before_command():

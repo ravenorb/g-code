@@ -27,6 +27,9 @@ class ParsedFieldModel(BaseModel):
 class ParsedLineModel(BaseModel):
     line_number: int
     raw: str
+    command: str
+    description: str
+    arguments: List[str]
     fields: List[ParsedFieldModel]
 
 

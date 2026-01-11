@@ -58,55 +58,62 @@ COMMAND_CATALOG: Dict[str, CommandMetadata] = {
     "BP": CommandMetadata(description="Backlash compensation parameter", arguments=["P"]),
     "RD": CommandMetadata(description="Raster density parameter", arguments=["P"]),
     "WHEN": CommandMetadata(
-        description="Conditional execution of a subsequent action",
+        description=(
+            "Conditional command (usually to signal piercing complete or cutting start – timing/condition based)."
+        ),
         arguments=["condition", "action"],
     ),
     "HKLDB": CommandMetadata(
-        description="Load material database and technology table for the job.",
+        description="Load database / machine configuration (usually at program start).",
         arguments=[
-            "material_index",
-            "material_grade",
-            "thickness_mm",
-            "db_subindex_1",
-            "db_subindex_2",
-            "db_subindex_3",
+            "technology",
+            "material_name",
+            "material_type",
+            "reserved_1",
+            "reserved_2",
+            "reserved_3",
         ],
     ),
     "HKINI": CommandMetadata(
-        description="Initialize laser setup parameters for the sheet.",
+        description="Initialize machine (set raw material size).",
         arguments=[
-            "nozzle_index",
-            "focus_position",
-            "gas_pressure",
+            "mode",
+            "material_x",
+            "material_y",
             "reserved_1",
             "reserved_2",
             "reserved_3",
         ],
     ),
     "HKOST": CommandMetadata(
-        description="Start piercing/cutting cycle for a contour profile.",
+        description=(
+            "Operation start (x offset, y offset, z offset, sub line number, "
+            "technology, 0,0,0)."
+        ),
         arguments=[
-            "pierce_time_s",
-            "pierce_height",
-            "angle_deg",
-            "profile_line",
-            "gas_index",
+            "offset_x",
+            "offset_y",
+            "offset_z",
+            "sub_id",
+            "technology",
             "reserved_1",
             "reserved_2",
             "reserved_3",
         ],
     ),
     "HKPPP": CommandMetadata(
-        description="Program point stop between contour groups.",
+        description="End of operation registration block.",
         arguments=[],
     ),
     "HKSTR": CommandMetadata(
-        description="Move to contour start and prepare height sensing.",
+        description=(
+            "Start contour (type: 0=outer/chain, 1=inner hole; leadX/Y = approach vector)."
+        ),
         arguments=[
-            "type_flag",
-            "kerf_flag",
-            "start_x",
-            "start_y",
+            "contour_type",
+            "kerf_mode",
+            "pierce_x",
+            "pierce_y",
             "reserved_1",
             "lead_x",
             "lead_y",
@@ -114,28 +121,28 @@ COMMAND_CATALOG: Dict[str, CommandMetadata] = {
         ],
     ),
     "HKPIE": CommandMetadata(
-        description="Trigger piercing cycle (vendor-specific defaults if zeros).",
-        arguments=["override_1", "override_2", "override_3"],
+        description="Pierce start (pierce sequence begins).",
+        arguments=["reserved_1", "reserved_2", "reserved_3"],
     ),
     "HKLEA": CommandMetadata(
-        description="Execute lead-in path (vendor-specific defaults if zeros).",
-        arguments=["override_1", "override_2", "override_3"],
+        description="Lead-in start (approach move – laser/plasma off).",
+        arguments=["reserved_1", "reserved_2", "reserved_3"],
     ),
     "HKCUT": CommandMetadata(
-        description="Vendor-specific cut activation (uses defaults when zeros).",
-        arguments=["override_1", "override_2", "override_3"],
+        description="Start cutting (laser/plasma on).",
+        arguments=["reserved_1", "reserved_2", "reserved_3"],
     ),
     "HKSTO": CommandMetadata(
-        description="Stop cutting cycle and close gas flow.",
-        arguments=["override_1", "override_2", "override_3"],
+        description="Stop contour (end of cutting path).",
+        arguments=["reserved_1", "reserved_2", "reserved_3"],
     ),
     "HKEND": CommandMetadata(
-        description="End of contour block; return to travel height.",
-        arguments=["override_1", "override_2", "override_3"],
+        description="End of program (after all contours).",
+        arguments=["reserved_1", "reserved_2", "reserved_3"],
     ),
     "HKPED": CommandMetadata(
-        description="End of section; reset height control for travel.",
-        arguments=["override_1", "override_2", "override_3"],
+        description="Program end (optional – sometimes used for final cleanup or machine reset).",
+        arguments=["reserved_1", "reserved_2", "reserved_3"],
     ),
 }
 

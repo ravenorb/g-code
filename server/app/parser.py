@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Union
 
 from parser.command_catalog import describe_command
 
@@ -17,7 +17,7 @@ class ParsedLine:
     line_number: int
     raw: str
     command: str
-    params: Dict[str, float]
+    params: Dict[str, Union[str, float]]
     description: str
     arguments: List[str]
 
@@ -53,8 +53,16 @@ class HKParser:
 
             command = match.group("command").upper()
             params_str = match.group("rest") or ""
-            params: Dict[str, float] = {}
-            if not command.startswith("HK"):
+            metadata = describe_command(command)
+            params: Dict[str, Union[str, float]] = {}
+            if command.startswith("HK"):
+                hk_params = _parse_hk_params(params_str)
+                if hk_params:
+                    for idx, arg_name in enumerate(metadata.arguments):
+                        if idx >= len(hk_params):
+                            break
+                        params[arg_name] = _coerce_param(hk_params[idx])
+            else:
                 for param_match in PARAM_RE.finditer(params_str):
                     key, value = param_match.groups()
                     try:
@@ -62,7 +70,6 @@ class HKParser:
                     except ValueError as exc:  # pragma: no cover - defensive
                         raise ValueError(f"Invalid numeric value on line {idx}") from exc
 
-            metadata = describe_command(command)
             parsed.append(
                 ParsedLine(
                     line_number=idx,
@@ -198,3 +205,41 @@ def extract_profile_block(lines: List[str], profile_line: Optional[int]) -> List
         if "HKSTO" in line.upper():
             break
     return block
+
+
+def _parse_hk_params(params_text: str) -> List[str]:
+    start = params_text.find("(")
+    end = params_text.rfind(")")
+    if start == -1 or end == -1 or end <= start:
+        return []
+    return _split_params(params_text[start + 1 : end])
+
+
+def _split_params(param_text: str) -> List[str]:
+    parts: List[str] = []
+    current: List[str] = []
+    in_quotes = False
+    for char in param_text:
+        if char == '"':
+            in_quotes = not in_quotes
+            current.append(char)
+            continue
+        if char == "," and not in_quotes:
+            parts.append("".join(current).strip())
+            current = []
+            continue
+        current.append(char)
+    parts.append("".join(current).strip())
+    return [part for part in parts if part != ""]
+
+
+def _coerce_param(raw_value: str) -> Union[str, float]:
+    cleaned = raw_value.strip()
+    if not cleaned:
+        return ""
+    if cleaned.startswith('"') and cleaned.endswith('"') and len(cleaned) >= 2:
+        return cleaned[1:-1]
+    try:
+        return float(cleaned)
+    except ValueError:
+        return cleaned

@@ -117,7 +117,7 @@ async def upload_file(
         setup=setup,
     )
     logger.info("Upload validated for job %s with %d diagnostics", job_id, len(result.diagnostics))
-    payload = _build_validation_payload(result)
+    payload = _build_validation_payload(result, setup=setup)
     return UploadResponse(
         **payload,
         stored_path=str(stored.stored_path),
@@ -210,7 +210,7 @@ async def release(
     )
 
 
-def _build_validation_payload(result) -> dict:
+def _build_validation_payload(result, setup: Optional[dict] = None) -> dict:
     _record_audit(
         {
             "event": "validate",
@@ -238,6 +238,7 @@ def _build_validation_payload(result) -> dict:
             for line in result.parsed
         ],
         "parts": [_to_part_model(part) for part in result.parts],
+        "setup": setup,
     }
 
 

@@ -214,7 +214,7 @@
           renderSummary(data);
           renderDiagnostics(data.diagnostics);
           renderParsed(data.parsed_lines);
-          renderSheet(data.parts, data.job_id);
+          renderSheet(data.parts, data.job_id, data.setup);
           lastJobId = data.job_id;
 
           statusEl.textContent = "Validation completed.";
@@ -275,7 +275,7 @@
         });
       }
 
-      function renderSheet(parts, jobId) {
+      function renderSheet(parts, jobId, setup) {
         sheet.innerHTML = "";
         sheetInfo.classList.add("hidden");
         partDetail.classList.add("hidden");
@@ -294,18 +294,29 @@
           return;
         }
 
+        const hasSetup = setup && typeof setup.sheetX === "number" && typeof setup.sheetY === "number";
         const xs = withCoords.map((p) => p.x);
         const ys = withCoords.map((p) => p.y);
-        const minX = Math.min(...xs);
-        const maxX = Math.max(...xs);
-        const minY = Math.min(...ys);
-        const maxY = Math.max(...ys);
-        const padding = 30;
-        const width = sheet.clientWidth || 600;
-        const height = sheet.clientHeight || 420;
+        const minX = hasSetup ? 0 : Math.min(...xs);
+        const maxX = hasSetup ? setup.sheetX : Math.max(...xs);
+        const minY = hasSetup ? 0 : Math.min(...ys);
+        const maxY = hasSetup ? setup.sheetY : Math.max(...ys);
+        const padding = 24;
+        const containerWidth = sheet.parentElement?.clientWidth || 720;
+        const width = Math.min(containerWidth, 720);
+        const height = hasSetup
+          ? Math.max(220, Math.round(width * (setup.sheetY / setup.sheetX)))
+          : sheet.clientHeight || 420;
+        sheet.style.width = `${width}px`;
+        sheet.style.height = `${height}px`;
         const rangeX = maxX - minX || 1;
         const rangeY = maxY - minY || 1;
         const scale = Math.min((width - padding * 2) / rangeX, (height - padding * 2) / rangeY);
+
+        if (hasSetup) {
+          sheetInfo.textContent = `Sheet size: ${setup.sheetX} x ${setup.sheetY}`;
+          sheetInfo.classList.remove("hidden");
+        }
 
         withCoords.forEach((part) => {
           const x = (part.x - minX) * scale + padding;

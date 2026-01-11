@@ -39,79 +39,113 @@
   },
   {
     "command": "HKCUT",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "Vendor-specific cut activation (uses defaults when zeros).",
     "arguments": [
-      "vendor_params"
+      "override_1",
+      "override_2",
+      "override_3"
     ]
   },
   {
     "command": "HKEND",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "End of contour block; return to travel height.",
     "arguments": [
-      "vendor_params"
+      "override_1",
+      "override_2",
+      "override_3"
     ]
   },
   {
     "command": "HKINI",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "Initialize laser setup parameters for the sheet.",
     "arguments": [
-      "vendor_params"
+      "nozzle_index",
+      "focus_position",
+      "gas_pressure",
+      "reserved_1",
+      "reserved_2",
+      "reserved_3"
     ]
   },
   {
     "command": "HKLDB",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "Load material database and technology table for the job.",
     "arguments": [
-      "vendor_params"
+      "material_index",
+      "material_grade",
+      "thickness_mm",
+      "db_subindex_1",
+      "db_subindex_2",
+      "db_subindex_3"
     ]
   },
   {
     "command": "HKLEA",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "Execute lead-in path (vendor-specific defaults if zeros).",
     "arguments": [
-      "vendor_params"
+      "override_1",
+      "override_2",
+      "override_3"
     ]
   },
   {
     "command": "HKOST",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "Start piercing/cutting cycle for a contour profile.",
     "arguments": [
-      "vendor_params"
+      "pierce_time_s",
+      "pierce_height",
+      "angle_deg",
+      "profile_line",
+      "gas_index",
+      "reserved_1",
+      "reserved_2",
+      "reserved_3"
     ]
   },
   {
     "command": "HKPED",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "End of section; reset height control for travel.",
     "arguments": [
-      "vendor_params"
+      "override_1",
+      "override_2",
+      "override_3"
     ]
   },
   {
     "command": "HKPIE",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "Trigger piercing cycle (vendor-specific defaults if zeros).",
     "arguments": [
-      "vendor_params"
+      "override_1",
+      "override_2",
+      "override_3"
     ]
   },
   {
     "command": "HKPPP",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
-    "arguments": [
-      "vendor_params"
-    ]
+    "description": "Program point stop between contour groups.",
+    "arguments": []
   },
   {
     "command": "HKSTO",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "Stop cutting cycle and close gas flow.",
     "arguments": [
-      "vendor_params"
+      "override_1",
+      "override_2",
+      "override_3"
     ]
   },
   {
     "command": "HKSTR",
-    "description": "Vendor-specific macro observed in sample MPF files. More documentation is needed for an authoritative description.",
+    "description": "Move to contour start and prepare height sensing.",
     "arguments": [
-      "vendor_params"
+      "type_flag",
+      "kerf_flag",
+      "start_x",
+      "start_y",
+      "reserved_1",
+      "lead_x",
+      "lead_y",
+      "reserved_2"
     ]
   },
   {

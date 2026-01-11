@@ -50,12 +50,13 @@ class HKParser:
             command = match.group("command").upper()
             params_str = match.group("rest") or ""
             params: Dict[str, float] = {}
-            for param_match in PARAM_RE.finditer(params_str):
-                key, value = param_match.groups()
-                try:
-                    params[key.upper()] = float(value)
-                except ValueError as exc:  # pragma: no cover - defensive
-                    raise ValueError(f"Invalid numeric value on line {idx}") from exc
+            if not command.startswith("HK"):
+                for param_match in PARAM_RE.finditer(params_str):
+                    key, value = param_match.groups()
+                    try:
+                        params[key.upper()] = float(value)
+                    except ValueError as exc:  # pragma: no cover - defensive
+                        raise ValueError(f"Invalid numeric value on line {idx}") from exc
 
             parsed.append(ParsedLine(line_number=idx, raw=normalized, command=command, params=params))
         return parsed

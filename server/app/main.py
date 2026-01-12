@@ -306,16 +306,6 @@ async def part_detail(
         extra_points = build_part_plot_points(block)
         if not extra_points:
             continue
-        if (
-            source_part
-            and source_part.anchor_x is not None
-            and source_part.anchor_y is not None
-            and part.anchor_x is not None
-            and part.anchor_y is not None
-        ):
-            dx = part.anchor_x - source_part.anchor_x
-            dy = part.anchor_y - source_part.anchor_y
-            extra_points = [_offset_points(contour, dx, dy) for contour in extra_points]
         plot_contours.append(
             ContourPlotModel(
                 label=f"{part_number_ref}.{contour_index}",
@@ -665,10 +655,6 @@ def _parse_extra_contours(raw: Optional[str], parts: list[PartSummaryModel]) -> 
         if len(refs) >= 5:
             break
     return refs
-
-
-def _offset_points(points: list[tuple[float, float]], dx: float, dy: float) -> list[tuple[float, float]]:
-    return [(point[0] + dx, point[1] + dy) for point in points]
 
 
 def _build_display_lines(result) -> list[ParsedLineModel]:

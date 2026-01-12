@@ -36,7 +36,6 @@ def extract_part_program(
 
     hkost_idx = label_to_index[part_label]
     hkost_line = lines[hkost_idx]
-    target_anchor = _extract_hkost_anchor(hkost_line)
     profile_line = _extract_profile_line(hkost_line)
     if profile_line is None:
         raise ValueError("HKOST line missing profile reference.")
@@ -55,12 +54,6 @@ def extract_part_program(
             block = extract_part_contour_block(lines, part_line, contour_index)
             if not block:
                 continue
-            if target_anchor:
-                source_anchor = _extract_part_anchor(lines, label_to_index, part_line)
-                if source_anchor:
-                    dx = target_anchor[0] - source_anchor[0]
-                    dy = target_anchor[1] - source_anchor[1]
-                    block = [_offset_block_line(line, dx, dy) for line in block]
             extra_blocks.append(block)
         if extra_blocks:
             part_lines = _insert_extra_contours(part_lines, extra_blocks)
@@ -181,30 +174,6 @@ def _find_block_end(lines: List[str], start_idx: int) -> int | None:
     return None
 
 
-def _extract_hkost_anchor(hkost_line: str) -> tuple[float, float] | None:
-    match = HKOST_PATTERN.search(hkost_line)
-    if not match:
-        return None
-    params = [p.strip() for p in match.group("params").split(",") if p.strip()]
-    if len(params) < 2:
-        return None
-    try:
-        return float(params[0]), float(params[1])
-    except ValueError:
-        return None
-
-
-def _extract_part_anchor(
-    lines: List[str],
-    label_to_index: dict[int, int],
-    part_line: int,
-) -> tuple[float, float] | None:
-    hkost_idx = label_to_index.get(part_line)
-    if hkost_idx is None:
-        return None
-    return _extract_hkost_anchor(lines[hkost_idx])
-
-
 def _first_match(lines: List[str], pattern: str) -> str | None:
     compiled = re.compile(pattern, re.IGNORECASE)
     for line in lines:
@@ -265,22 +234,6 @@ def _translate_block_line(line: str, dx: float, dy: float) -> str:
     return COORD_PATTERN.sub(replace, line)
 
 
-def _offset_block_line(line: str, dx: float, dy: float) -> str:
-    if HKSTR_PATTERN.search(line):
-        return _offset_hkstr(line, dx, dy)
-
-    def replace(match: re.Match[str]) -> str:
-        axis, raw_value = match.groups()
-        try:
-            value = float(raw_value)
-        except ValueError:
-            return match.group(0)
-        shifted = value + (dx if axis.upper() == "X" else dy)
-        return f"{axis}{shifted:.4f}"
-
-    return COORD_PATTERN.sub(replace, line)
-
-
 def _translate_hkstr(line: str, dx: float, dy: float) -> str:
     match = HKSTR_PATTERN.search(line)
     if not match:
@@ -292,21 +245,6 @@ def _translate_hkstr(line: str, dx: float, dy: float) -> str:
     if len(params) >= 7:
         params[5] = _format(params[5], dx)
         params[6] = _format(params[6], dy)
-    updated = ",".join(params)
-    return HKSTR_PATTERN.sub(f"HKSTR({updated})", line)
-
-
-def _offset_hkstr(line: str, dx: float, dy: float) -> str:
-    match = HKSTR_PATTERN.search(line)
-    if not match:
-        return line
-    params = [p.strip() for p in match.group("params").split(",")]
-    if len(params) >= 4:
-        params[2] = _format_offset(params[2], dx)
-        params[3] = _format_offset(params[3], dy)
-    if len(params) >= 7:
-        params[5] = _format_offset(params[5], dx)
-        params[6] = _format_offset(params[6], dy)
     updated = ",".join(params)
     return HKSTR_PATTERN.sub(f"HKSTR({updated})", line)
 
@@ -387,14 +325,6 @@ def _format(raw_value: str, delta: float) -> str:
     except ValueError:
         return raw_value
     return _format_float(as_float - delta)
-
-
-def _format_offset(raw_value: str, delta: float) -> str:
-    try:
-        as_float = float(raw_value)
-    except ValueError:
-        return raw_value
-    return _format_float(as_float + delta)
 
 
 def _format_float(value: float) -> str:

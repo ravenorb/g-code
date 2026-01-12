@@ -3,12 +3,25 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
+import re
 from typing import Iterable, List, Optional
 
 from .config import ServiceConfig
-from .parser import HKParser, ParsedLine, PartSummary, load_from_bytes
+from .parser import HKParser, ParsedLine, PartSummary, _strip_line_label, load_from_bytes
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_when(raw: str) -> str:
+    stripped = _strip_line_label(raw.strip()).upper()
+    return re.sub(r"\s+", "", stripped)
+
+
+def _has_executable_content(raw: str) -> bool:
+    stripped = raw.strip()
+    if not stripped or stripped.startswith(";"):
+        return False
+    return bool(_strip_line_label(stripped).strip())
 
 
 @dataclass
@@ -116,8 +129,43 @@ class ValidationService:
                             message=f"Power {power} is below minimum {self._config.limits.min_power}",
                             line=line.line_number,
                             code="power_low",
+                        )
                     )
-                )
+
+        termination_line = None
+        termination_command = None
+        for line in parsed:
+            if line.command.upper() in {"M30", "HKEND"}:
+                termination_line = line.line_number
+                termination_command = line.command.upper()
+                break
+
+        if termination_line is not None:
+            for line_number, raw in enumerate(line_buffer[termination_line:], start=termination_line + 1):
+                if _has_executable_content(raw):
+                    diagnostics.append(
+                        Diagnostic(
+                            severity="error",
+                            message=f"Command found after {termination_command} on line {termination_line}.",
+                            line=line_number,
+                            code="content_after_end",
+                        )
+                    )
+                    break
+
+        previous_line: Optional[ParsedLine] = None
+        for line in parsed:
+            if line.command.upper() == "WHEN" and previous_line and previous_line.command.upper() == "WHEN":
+                if _normalize_when(line.raw) == _normalize_when(previous_line.raw):
+                    diagnostics.append(
+                        Diagnostic(
+                            severity="error",
+                            message="Duplicate WHEN command repeated on consecutive lines.",
+                            line=line.line_number,
+                            code="duplicate_when",
+                        )
+                    )
+            previous_line = line
 
         return ValidationResult(job_id=job_id, diagnostics=diagnostics, parsed=parsed, parts=parts, raw_lines=line_buffer)
 

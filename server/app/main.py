@@ -9,7 +9,7 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from .config import DEFAULT_CONFIG, ServiceConfig
 from .diagnostics import ValidationService, hash_payload
 from .extract import extract_part_profile_program, extract_part_program
@@ -333,6 +333,40 @@ async def part_detail(
     )
 
 
+@app.get("/jobs/{job_id}/parts/{part_number}/program")
+async def part_program_download(
+    job_id: str,
+    part_number: int,
+    extra_contours: Optional[str] = None,
+    release_manager: ReleaseManager = Depends(get_release_manager),
+    storage_manager: StorageManager = Depends(get_storage_manager),
+) -> Response:
+    validation = release_manager.get_validation(job_id)
+    if validation is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    part = next((p for p in validation.parts if p.part_number == part_number), None)
+    if part is None:
+        raise HTTPException(status_code=404, detail="Part not found")
+
+    extra_contour_refs = _parse_extra_contours(extra_contours, validation.parts)
+    content = "\n".join(validation.raw_lines)
+    part_program = extract_part_program(
+        content,
+        part.part_line,
+        extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
+    ).lines
+    meta = storage_manager.load_job(job_id) or {}
+    original_name = meta.get("originalFile", f"{job_id}.mpf")
+    filename = _build_part_filename(original_name, part_number)
+    payload = "\n".join(part_program) + "\n"
+    return Response(
+        content=payload,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/jobs/{job_id}/parts/{part_number}/view", response_class=HTMLResponse)
 async def part_view(job_id: str, part_number: int) -> HTMLResponse:
     html = f"""
@@ -408,12 +442,14 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
         </div>
         <div class="card">
           <h2>Additional Contours</h2>
-          <p>Enter up to 3 extra contours as <strong>part.contour</strong> (example: <code>2.4</code>).</p>
+          <p>Enter up to 5 extra contours as <strong>part.contour</strong> (example: <code>2.4</code>).</p>
           <div class="row">
             <label for="extra-contour-1">Extra contour</label>
             <input id="extra-contour-1" class="extra-contour" placeholder="2.4" />
             <input id="extra-contour-2" class="extra-contour" placeholder="3.1" />
             <input id="extra-contour-3" class="extra-contour" placeholder="5.2" />
+            <input id="extra-contour-4" class="extra-contour" placeholder="6.1" />
+            <input id="extra-contour-5" class="extra-contour" placeholder="7.3" />
             <button id="apply-contours" type="button">Apply</button>
           </div>
           <p id="contour-status"></p>
@@ -424,6 +460,9 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
         </div>
         <div class="card">
           <h2>Standalone Part Program</h2>
+          <div class="row">
+            <a id="download-program" href="#" download>Download Standalone Part Program</a>
+          </div>
           <pre id="part-program"></pre>
         </div>
         <script>
@@ -434,6 +473,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           const contourStatus = document.getElementById("contour-status");
           const contourInputs = Array.from(document.querySelectorAll(".extra-contour"));
           const applyContours = document.getElementById("apply-contours");
+          const downloadLink = document.getElementById("download-program");
 
           function getExtraContours() {{
             return contourInputs.map((input) => input.value.trim()).filter(Boolean);
@@ -446,8 +486,14 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             return `?${{query.toString()}}`;
           }}
 
+          function updateDownloadLink(entries) {{
+            const queryString = buildQueryString(entries);
+            downloadLink.href = `/jobs/{job_id}/parts/{part_number}/program${{queryString}}`;
+          }}
+
           async function loadPart(entries = getExtraContours()) {{
             const queryString = buildQueryString(entries);
+            updateDownloadLink(entries);
             const resp = await fetch(`/jobs/{job_id}/parts/{part_number}${{queryString}}`);
             if (!resp.ok) {{
               plotInfo.textContent = "Unable to load part details.";
@@ -565,6 +611,13 @@ class ExtraContourRef:
     contour_index: int
 
 
+def _build_part_filename(original_name: str, part_number: int) -> str:
+    base = Path(original_name).stem or "part"
+    suffix = Path(original_name).suffix
+    candidate = f"{base}_p{part_number}{suffix}"
+    return re.sub(r"[^A-Za-z0-9._-]", "_", candidate)
+
+
 def _parse_extra_contours(raw: Optional[str], parts: list[PartSummaryModel]) -> list[ExtraContourRef]:
     if not raw:
         return []
@@ -591,7 +644,7 @@ def _parse_extra_contours(raw: Optional[str], parts: list[PartSummaryModel]) -> 
                 contour_index=contour_index,
             )
         )
-        if len(refs) >= 3:
+        if len(refs) >= 5:
             break
     return refs
 

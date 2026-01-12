@@ -285,24 +285,37 @@ async def part_detail(
     contour_block = extract_part_block(validation.raw_lines, part.part_line)
     plot_points = build_part_plot_points(contour_block)
     extra_contour_refs = _parse_extra_contours(extra_contours, validation.parts)
-    extra_contour_blocks = [
-        (
-            ref.part_number,
-            ref.contour_index,
-            extract_part_contour_block(validation.raw_lines, ref.part_line, ref.contour_index),
+    extra_contour_blocks = []
+    for ref in extra_contour_refs:
+        block = extract_part_contour_block(validation.raw_lines, ref.part_line, ref.contour_index)
+        extra_contour_blocks.append(
+            (
+                ref.part_number,
+                ref.contour_index,
+                block,
+                next((p for p in validation.parts if p.part_number == ref.part_number), None),
+            )
         )
-        for ref in extra_contour_refs
-    ]
     plot_contours = [
         ContourPlotModel(label=str(idx + 1), points=[[float(point[0]), float(point[1])] for point in contour])
         for idx, contour in enumerate(plot_points)
     ]
-    for part_number_ref, contour_index, block in extra_contour_blocks:
+    for part_number_ref, contour_index, block, source_part in extra_contour_blocks:
         if not block:
             continue
         extra_points = build_part_plot_points(block)
         if not extra_points:
             continue
+        if (
+            source_part
+            and source_part.anchor_x is not None
+            and source_part.anchor_y is not None
+            and part.anchor_x is not None
+            and part.anchor_y is not None
+        ):
+            dx = part.anchor_x - source_part.anchor_x
+            dy = part.anchor_y - source_part.anchor_y
+            extra_points = [_offset_points(contour, dx, dy) for contour in extra_points]
         plot_contours.append(
             ContourPlotModel(
                 label=f"{part_number_ref}.{contour_index}",
@@ -567,14 +580,10 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               ctx.fillText(contour.label || String(contourIndex + 1), labelX + 4, labelY - 4);
             }});
             plotInfo.textContent =
-              "Bounds: X " +
-              minX +
-              "→" +
-              maxX +
+              "Distance: X " +
+              rangeX +
               ", Y " +
-              minY +
-              "→" +
-              maxY;
+              rangeY;
           }}
 
           function syncInputsFromUrl() {{
@@ -647,6 +656,10 @@ def _parse_extra_contours(raw: Optional[str], parts: list[PartSummaryModel]) -> 
         if len(refs) >= 5:
             break
     return refs
+
+
+def _offset_points(points: list[tuple[float, float]], dx: float, dy: float) -> list[tuple[float, float]]:
+    return [(point[0] + dx, point[1] + dy) for point in points]
 
 
 def _build_display_lines(result) -> list[ParsedLineModel]:

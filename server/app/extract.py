@@ -79,10 +79,13 @@ def extract_part_profile_program(content: str, part_line: int, margin: float = 0
     """Create a standalone program that contains only the HKSTR -> HKSTO block."""
     lines = [line.rstrip() for line in content.splitlines() if line.strip()]
     label_to_index = _index_labels(lines)
-    if part_line not in label_to_index:
-        raise ValueError(f"Part line {part_line} not found.")
-
-    start_idx = label_to_index[part_line]
+    if part_line in label_to_index:
+        start_idx = label_to_index[part_line]
+    else:
+        if 1 <= part_line <= len(lines):
+            start_idx = part_line - 1
+        else:
+            raise ValueError(f"Part line {part_line} not found.")
     if not HKSTR_PATTERN.search(lines[start_idx]):
         raise ValueError(f"Line {part_line} is not an HKSTR declaration.")
 

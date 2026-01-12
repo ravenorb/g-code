@@ -17,13 +17,6 @@ def _normalize_when(raw: str) -> str:
     return re.sub(r"\s+", "", stripped)
 
 
-def _has_executable_content(raw: str) -> bool:
-    stripped = raw.strip()
-    if not stripped or stripped.startswith(";"):
-        return False
-    return bool(_strip_line_label(stripped).strip())
-
-
 @dataclass
 class Diagnostic:
     severity: str
@@ -131,27 +124,6 @@ class ValidationService:
                             code="power_low",
                         )
                     )
-
-        termination_line = None
-        termination_command = None
-        for line in parsed:
-            if line.command.upper() == "M30":
-                termination_line = line.line_number
-                termination_command = line.command.upper()
-                break
-
-        if termination_line is not None:
-            for line_number, raw in enumerate(line_buffer[termination_line:], start=termination_line + 1):
-                if _has_executable_content(raw):
-                    diagnostics.append(
-                        Diagnostic(
-                            severity="error",
-                            message=f"Command found after {termination_command} on line {termination_line}.",
-                            line=line_number,
-                            code="content_after_end",
-                        )
-                    )
-                    break
 
         previous_line: Optional[ParsedLine] = None
         for line in parsed:

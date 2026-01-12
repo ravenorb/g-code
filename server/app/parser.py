@@ -213,6 +213,15 @@ def _build_contour_plot_points(lines: List[str]) -> List[tuple[float, float]]:
             continue
 
         upper_line = normalized.upper()
+        if "HKSTR" in upper_line:
+            params = _parse_hk_params(upper_line)
+            if len(params) >= 4:
+                pierce_x = _coerce_float(params[2])
+                pierce_y = _coerce_float(params[3])
+                if pierce_x is not None and pierce_y is not None:
+                    current_x = pierce_x
+                    current_y = pierce_y
+            continue
         if "HKSTO" in upper_line or "HKPED" in upper_line:
             break
         if "HKCUT" in upper_line:

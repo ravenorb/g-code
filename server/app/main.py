@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from .config import DEFAULT_CONFIG, ServiceConfig
 from .diagnostics import ValidationService, hash_payload
-from .extract import extract_part_program
+from .extract import extract_part_profile_program, extract_part_program
 from .models import (
     DiagnosticModel,
     ExtractRequest,
@@ -28,9 +28,8 @@ from .models import (
     ValidationSummary,
 )
 from .release import ReleaseManager
-from .parser import extract_profile_block
+from .parser import build_part_plot_points, extract_part_block, load_from_bytes
 from .storage import StorageManager, extract_sheet_setup
-from .parser import load_from_bytes
 
 app = FastAPI(title="HK Parser Service", version="0.1.0")
 
@@ -223,20 +222,7 @@ def _build_validation_payload(result, setup: Optional[dict] = None) -> dict:
         "job_id": result.job_id,
         "diagnostics": [DiagnosticModel(**diag.__dict__) for diag in result.diagnostics],
         "summary": ValidationSummary(**result.summary),
-        "parsed_lines": [
-            ParsedLineModel(
-                line_number=line.line_number,
-                raw=line.raw,
-                command=line.command,
-                description=line.description,
-                arguments=line.arguments,
-                fields=[
-                    ParsedFieldModel(name="command", value=line.command),
-                    *[ParsedFieldModel(name=name, value=value) for name, value in line.params.items()],
-                ],
-            )
-            for line in result.parsed
-        ],
+        "parsed_lines": _build_display_lines(result),
         "parts": [_to_part_model(part) for part in result.parts],
         "setup": setup,
     }
@@ -249,30 +235,197 @@ def _record_audit(entry: dict) -> None:
 
 def _to_part_model(part) -> PartSummaryModel:
     return PartSummaryModel(
-        hkost_line=part.hkost_line,
-        profile_line=part.profile_line,
+        part_line=part.part_line,
+        start_line=part.start_line,
+        end_line=part.end_line,
         contours=part.contours,
-        x=part.x,
-        y=part.y,
     )
 
 
-@app.get("/jobs/{job_id}/parts/{hkost_line}", response_model=PartDetailModel)
-async def part_detail(job_id: str, hkost_line: int, release_manager: ReleaseManager = Depends(get_release_manager)) -> PartDetailModel:
+@app.get("/jobs/{job_id}/parts/{part_line}", response_model=PartDetailModel)
+async def part_detail(job_id: str, part_line: int, release_manager: ReleaseManager = Depends(get_release_manager)) -> PartDetailModel:
     validation = release_manager.get_validation(job_id)
     if validation is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    part = next((p for p in validation.parts if p.hkost_line == hkost_line), None)
+    part = next((p for p in validation.parts if p.part_line == part_line), None)
     if part is None:
         raise HTTPException(status_code=404, detail="Part not found")
 
-    profile_block = extract_profile_block(validation.raw_lines, part.profile_line)
+    profile_block = extract_part_block(validation.raw_lines, part.part_line)
+    plot_points = build_part_plot_points(profile_block)
+    content = "\n".join(validation.raw_lines)
+    part_program = extract_part_profile_program(content, part.part_line).lines
     return PartDetailModel(
-        hkost_line=part.hkost_line,
-        profile_line=part.profile_line,
+        part_line=part.part_line,
+        start_line=part.start_line,
+        end_line=part.end_line,
         contours=part.contours,
-        x=part.x,
-        y=part.y,
         profile_block=profile_block,
+        plot_points=[list(point) for point in plot_points],
+        part_program=part_program,
     )
+
+
+@app.get("/jobs/{job_id}/parts/{part_line}/view", response_class=HTMLResponse)
+async def part_view(job_id: str, part_line: int) -> HTMLResponse:
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Part {part_line}</title>
+        <style>
+          body {{
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+            background: #f8fafc;
+            color: #0f172a;
+          }}
+          .card {{
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+          }}
+          canvas {{
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: #ffffff;
+          }}
+          pre {{
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 0.75rem;
+            border-radius: 6px;
+            overflow-x: auto;
+          }}
+        </style>
+      </head>
+      <body>
+        <a href="/">← Back to upload</a>
+        <h1>Part {part_line}</h1>
+        <div class="card">
+          <h2>Geometry</h2>
+          <canvas id="plot" width="720" height="420"></canvas>
+          <p id="plot-info"></p>
+        </div>
+        <div class="card">
+          <h2>Part Profile Code</h2>
+          <pre id="profile-code"></pre>
+        </div>
+        <div class="card">
+          <h2>Standalone Part Program</h2>
+          <pre id="part-program"></pre>
+        </div>
+        <script>
+          const plotCanvas = document.getElementById("plot");
+          const plotInfo = document.getElementById("plot-info");
+          const profileCode = document.getElementById("profile-code");
+          const partProgram = document.getElementById("part-program");
+
+          async function loadPart() {{
+            const resp = await fetch("/jobs/{job_id}/parts/{part_line}");
+            if (!resp.ok) {{
+              plotInfo.textContent = "Unable to load part details.";
+              return;
+            }}
+            const data = await resp.json();
+            profileCode.textContent = (data.profile_block || []).join("\\n");
+            partProgram.textContent = (data.part_program || []).join("\\n");
+            renderPlot(data.plot_points || []);
+          }}
+
+          function renderPlot(points) {{
+            const ctx = plotCanvas.getContext("2d");
+            ctx.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
+            if (!points.length) {{
+              plotInfo.textContent = "No plot data found for this part.";
+              return;
+            }}
+            const xs = points.map((p) => p[0]);
+            const ys = points.map((p) => p[1]);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const maxY = Math.max(...ys);
+            const padding = 24;
+            const rangeX = maxX - minX || 1;
+            const rangeY = maxY - minY || 1;
+            const scale = Math.min(
+              (plotCanvas.width - padding * 2) / rangeX,
+              (plotCanvas.height - padding * 2) / rangeY
+            );
+            ctx.strokeStyle = "#2563eb";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            points.forEach((point, index) => {{
+              const x = (point[0] - minX) * scale + padding;
+              const y = (maxY - point[1]) * scale + padding;
+              if (index === 0) {{
+                ctx.moveTo(x, y);
+              }} else {{
+                ctx.lineTo(x, y);
+              }}
+            }});
+            ctx.stroke();
+            plotInfo.textContent = `Bounds: X ${minX}→${maxX}, Y ${minY}→${maxY}`;
+          }}
+
+          loadPart();
+        </script>
+      </body>
+    </html>
+    """
+    return HTMLResponse(html)
+
+
+def _build_display_lines(result) -> list[ParsedLineModel]:
+    parts_by_start = {part.start_line: part for part in result.parts}
+    part_ranges = [(part.start_line, part.end_line) for part in result.parts]
+
+    def is_within_part(line_number: int) -> bool:
+        return any(start <= line_number <= end for start, end in part_ranges)
+
+    display_lines: list[ParsedLineModel] = []
+    for line in result.parsed:
+        if line.line_number in parts_by_start:
+            part = parts_by_start[line.line_number]
+            display_lines.append(
+                ParsedLineModel(
+                    line_number=line.line_number,
+                    raw=f"N{part.part_line} PART",
+                    command="PART",
+                    description="Part profile block",
+                    arguments=[],
+                    fields=[
+                        ParsedFieldModel(name="command", value="PART"),
+                        ParsedFieldModel(name="part_line", value=part.part_line),
+                        ParsedFieldModel(name="start_line", value=part.start_line),
+                        ParsedFieldModel(name="end_line", value=part.end_line),
+                    ],
+                )
+            )
+            continue
+
+        if is_within_part(line.line_number):
+            continue
+
+        display_lines.append(
+            ParsedLineModel(
+                line_number=line.line_number,
+                raw=line.raw,
+                command=line.command,
+                description=line.description,
+                arguments=line.arguments,
+                fields=[
+                    ParsedFieldModel(name="command", value=line.command),
+                    *[ParsedFieldModel(name=name, value=value) for name, value in line.params.items()],
+                ],
+            )
+        )
+
+    return display_lines

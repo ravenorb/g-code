@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+import math
 from typing import Dict, Iterable, List, Optional, Union
 
 from parser.command_catalog import describe_command
@@ -174,38 +175,59 @@ def build_part_plot_points(lines: List[str]) -> List[tuple[float, float]]:
     points: List[tuple[float, float]] = []
     current_x: Optional[float] = None
     current_y: Optional[float] = None
+    cut_started = False
 
     for line in lines:
-        match = HKSTR_RE.search(line)
-        if match:
-            params = [p.strip() for p in match.group("params").split(",") if p.strip()]
-            if len(params) >= 4:
-                try:
-                    start_x = float(params[2])
-                    start_y = float(params[3])
-                    points.append((start_x, start_y))
-                    current_x, current_y = start_x, start_y
-                except ValueError:
-                    pass
-            if len(params) >= 7:
-                try:
-                    lead_x = float(params[5])
-                    lead_y = float(params[6])
-                    points.append((lead_x, lead_y))
-                    current_x, current_y = lead_x, lead_y
-                except ValueError:
-                    pass
+        normalized = line.strip()
+        if not normalized:
             continue
 
-        coords = {axis.upper(): float(value) for axis, value in COORD_RE.findall(line)}
-        if not coords:
+        upper_line = normalized.upper()
+        if "HKSTO" in upper_line:
+            break
+        if "HKCUT" in upper_line:
+            cut_started = True
+            if current_x is not None and current_y is not None:
+                points.append((current_x, current_y))
             continue
+
+        content = _strip_line_label(normalized)
+        if not content:
+            continue
+
+        match = LINE_RE.match(content)
+        if not match:
+            continue
+
+        command = match.group("command").upper()
+        params_text = match.group("rest") or ""
+        if command not in {"G0", "G00", "G1", "G01", "G2", "G02", "G3", "G03"}:
+            continue
+
+        coords = {axis.upper(): float(value) for axis, value in COORD_RE.findall(params_text)}
         next_x = coords.get("X", current_x)
         next_y = coords.get("Y", current_y)
         if next_x is None or next_y is None:
             continue
-        if current_x is None or current_y is None or (next_x, next_y) != (current_x, current_y):
+
+        if command in {"G2", "G02", "G3", "G03"} and cut_started:
+            arc_params = {key.upper(): float(value) for key, value in PARAM_RE.findall(params_text)}
+            arc_points = _interpolate_arc_points(
+                current_x,
+                current_y,
+                next_x,
+                next_y,
+                arc_params.get("I"),
+                arc_params.get("J"),
+                command in {"G2", "G02"},
+            )
+            if arc_points:
+                points.extend(arc_points)
+            elif (next_x, next_y) != (current_x, current_y):
+                points.append((next_x, next_y))
+        elif cut_started and (current_x, current_y) != (next_x, next_y):
             points.append((next_x, next_y))
+
         current_x, current_y = next_x, next_y
 
     return points
@@ -216,6 +238,43 @@ def _find_part_end(lines: List[str], start_index: int) -> int:
         if HKSTO_RE.search(lines[idx]):
             return idx
     return len(lines) - 1
+
+
+def _interpolate_arc_points(
+    start_x: Optional[float],
+    start_y: Optional[float],
+    end_x: float,
+    end_y: float,
+    offset_i: Optional[float],
+    offset_j: Optional[float],
+    clockwise: bool,
+) -> List[tuple[float, float]]:
+    if start_x is None or start_y is None or offset_i is None or offset_j is None:
+        return []
+
+    center_x = start_x + offset_i
+    center_y = start_y + offset_j
+    radius = math.hypot(offset_i, offset_j)
+    if radius == 0:
+        return []
+
+    start_angle = math.atan2(start_y - center_y, start_x - center_x)
+    end_angle = math.atan2(end_y - center_y, end_x - center_x)
+    sweep = end_angle - start_angle
+    if clockwise and sweep >= 0:
+        sweep -= 2 * math.pi
+    elif not clockwise and sweep <= 0:
+        sweep += 2 * math.pi
+
+    segment_angle = math.radians(10)
+    segments = max(2, int(abs(sweep) / segment_angle))
+    points: List[tuple[float, float]] = []
+    for step in range(1, segments + 1):
+        angle = start_angle + (sweep * step / segments)
+        x = center_x + radius * math.cos(angle)
+        y = center_y + radius * math.sin(angle)
+        points.append((x, y))
+    return points
 
 
 def _parse_hk_params(params_text: str) -> List[str]:

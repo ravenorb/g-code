@@ -58,12 +58,6 @@ class ContourPlotModel(BaseModel):
 class PartDetailModel(PartSummaryModel):
     profile_block: List[str] = Field(default_factory=list, description="Profile block lines for the selected part.")
     part_program: List[str] = Field(default_factory=list, description="Standalone program to cut just this part.")
-    workpiece_width: Optional[float] = Field(
-        default=None, description="Standalone HKINI workpiece width (X) for the part program."
-    )
-    workpiece_height: Optional[float] = Field(
-        default=None, description="Standalone HKINI workpiece height (Y) for the part program."
-    )
     plot_contours: List[ContourPlotModel] = Field(
         default_factory=list,
         description="Plot contours with labels for the selected part.",

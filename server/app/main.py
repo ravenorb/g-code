@@ -324,11 +324,11 @@ async def part_detail(
         )
     content = "\n".join(validation.raw_lines)
     profile_block = extract_part_profile_program(content, part.part_line).lines
-    part_program_result = extract_part_program(
+    part_program = extract_part_program(
         content,
         part.part_line,
         extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
-    )
+    ).lines
     return PartDetailModel(
         part_number=part.part_number,
         part_line=part.part_line,
@@ -342,9 +342,7 @@ async def part_detail(
         profile_block=profile_block,
         plot_points=[[list(point) for point in contour] for contour in plot_points],
         plot_contours=plot_contours,
-        part_program=part_program_result.lines,
-        workpiece_width=part_program_result.width + 1.0,
-        workpiece_height=part_program_result.height + 1.0,
+        part_program=part_program,
     )
 
 
@@ -517,17 +515,13 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             const data = await resp.json();
             profileCode.textContent = (data.profile_block || []).join("\\n");
             partProgram.textContent = (data.part_program || []).join("\\n");
-            renderPlot(
-              data.plot_contours || data.plot_points || [],
-              data.workpiece_width,
-              data.workpiece_height
-            );
+            renderPlot(data.plot_contours || data.plot_points || []);
             contourStatus.textContent = entries.length
               ? `Including extra contours: ${{entries.join(", ")}}`
               : "No extra contours selected.";
           }}
 
-          function renderPlot(contours, workpieceWidth, workpieceHeight) {{
+          function renderPlot(contours) {{
             const ctx = plotCanvas.getContext("2d");
             ctx.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
             const normalizedContours = Array.isArray(contours[0]?.points)
@@ -549,23 +543,12 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             const minY = Math.min(...ys);
             const maxY = Math.max(...ys);
             const padding = 24;
-            const resolvedWorkpieceWidth =
-              typeof workpieceWidth === "number" && workpieceWidth > 0
-                ? workpieceWidth
-                : maxX - minX || 1;
-            const resolvedWorkpieceHeight =
-              typeof workpieceHeight === "number" && workpieceHeight > 0
-                ? workpieceHeight
-                : maxY - minY || 1;
-            const rangeX = resolvedWorkpieceWidth || 1;
-            const rangeY = resolvedWorkpieceHeight || 1;
+            const rangeX = maxX - minX || 1;
+            const rangeY = maxY - minY || 1;
             const scale = Math.min(
               (plotCanvas.width - padding * 2) / rangeX,
               (plotCanvas.height - padding * 2) / rangeY
             );
-            ctx.strokeStyle = "#1e293b";
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(padding, padding, rangeX * scale, rangeY * scale);
             ctx.strokeStyle = "#2563eb";
             ctx.lineWidth = 2;
             ctx.font = "13px Arial";
@@ -575,7 +558,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               ctx.beginPath();
               contour.points.forEach((point, index) => {{
                 const x = (point[0] - minX) * scale + padding;
-                const y = (resolvedWorkpieceHeight - (point[1] - minY)) * scale + padding;
+                const y = (maxY - point[1]) * scale + padding;
                 if (index === 0) {{
                   ctx.moveTo(x, y);
                 }} else {{
@@ -593,14 +576,14 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               );
               const count = contour.points.length || 1;
               const labelX = (centroid.x / count - minX) * scale + padding;
-              const labelY =
-                (resolvedWorkpieceHeight - (centroid.y / count - minY)) * scale + padding;
+              const labelY = (maxY - centroid.y / count) * scale + padding;
               ctx.fillText(contour.label || String(contourIndex + 1), labelX + 4, labelY - 4);
             }});
             plotInfo.textContent =
-              workpieceWidth && workpieceHeight
-                ? `Workpiece: X ${workpieceWidth}, Y ${workpieceHeight}`
-                : `Distance: X ${rangeX}, Y ${rangeY}`;
+              "Distance: X " +
+              rangeX +
+              ", Y " +
+              rangeY;
           }}
 
           function syncInputsFromUrl() {{

@@ -225,6 +225,7 @@ def _build_validation_payload(result, setup: Optional[dict] = None) -> dict:
         "parsed_lines": _build_display_lines(result),
         "parts": [_to_part_model(part, result.raw_lines) for part in result.parts],
         "setup": setup,
+        "raw_program": list(result.raw_lines),
     }
 
 
@@ -237,6 +238,7 @@ def _to_part_model(part, raw_lines: list[str]) -> PartSummaryModel:
     contour_block = extract_part_block(raw_lines, part.part_line)
     plot_points = build_part_plot_points(contour_block)
     return PartSummaryModel(
+        part_number=part.part_number,
         part_line=part.part_line,
         hkost_line=part.hkost_line,
         profile_line=part.profile_line,
@@ -249,13 +251,17 @@ def _to_part_model(part, raw_lines: list[str]) -> PartSummaryModel:
     )
 
 
-@app.get("/jobs/{job_id}/parts/{part_line}", response_model=PartDetailModel)
-async def part_detail(job_id: str, part_line: int, release_manager: ReleaseManager = Depends(get_release_manager)) -> PartDetailModel:
+@app.get("/jobs/{job_id}/parts/{part_number}", response_model=PartDetailModel)
+async def part_detail(
+    job_id: str,
+    part_number: int,
+    release_manager: ReleaseManager = Depends(get_release_manager),
+) -> PartDetailModel:
     validation = release_manager.get_validation(job_id)
     if validation is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    part = next((p for p in validation.parts if p.part_line == part_line), None)
+    part = next((p for p in validation.parts if p.part_number == part_number), None)
     if part is None:
         raise HTTPException(status_code=404, detail="Part not found")
 
@@ -265,6 +271,7 @@ async def part_detail(job_id: str, part_line: int, release_manager: ReleaseManag
     profile_block = extract_part_profile_program(content, part.part_line).lines
     part_program = extract_part_program(content, part.part_line).lines
     return PartDetailModel(
+        part_number=part.part_number,
         part_line=part.part_line,
         hkost_line=part.hkost_line,
         profile_line=part.profile_line,
@@ -279,15 +286,15 @@ async def part_detail(job_id: str, part_line: int, release_manager: ReleaseManag
     )
 
 
-@app.get("/jobs/{job_id}/parts/{part_line}/view", response_class=HTMLResponse)
-async def part_view(job_id: str, part_line: int) -> HTMLResponse:
+@app.get("/jobs/{job_id}/parts/{part_number}/view", response_class=HTMLResponse)
+async def part_view(job_id: str, part_number: int) -> HTMLResponse:
     html = f"""
     <!DOCTYPE html>
     <html lang="en">
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Part {part_line}</title>
+        <title>Part {part_number}</title>
         <style>
           body {{
             font-family: Arial, sans-serif;
@@ -319,7 +326,7 @@ async def part_view(job_id: str, part_line: int) -> HTMLResponse:
       </head>
       <body>
         <a href="/">← Back to upload</a>
-        <h1>Part {part_line}</h1>
+        <h1>Part {part_number}</h1>
         <div class="card">
           <h2>Geometry</h2>
           <canvas id="plot" width="720" height="420"></canvas>
@@ -340,7 +347,7 @@ async def part_view(job_id: str, part_line: int) -> HTMLResponse:
           const partProgram = document.getElementById("part-program");
 
           async function loadPart() {{
-            const resp = await fetch("/jobs/{job_id}/parts/{part_line}");
+            const resp = await fetch("/jobs/{job_id}/parts/{part_number}");
             if (!resp.ok) {{
               plotInfo.textContent = "Unable to load part details.";
               return;
@@ -378,7 +385,9 @@ async def part_view(job_id: str, part_line: int) -> HTMLResponse:
             );
             ctx.strokeStyle = "#2563eb";
             ctx.lineWidth = 2;
-            points.forEach((contour) => {{
+            ctx.font = "13px Arial";
+            ctx.fillStyle = "#0f172a";
+            points.forEach((contour, contourIndex) => {{
               if (!contour.length) return;
               ctx.beginPath();
               contour.forEach((point, index) => {{
@@ -391,6 +400,18 @@ async def part_view(job_id: str, part_line: int) -> HTMLResponse:
                 }}
               }});
               ctx.stroke();
+              const centroid = contour.reduce(
+                (acc, point) => {{
+                  acc.x += point[0];
+                  acc.y += point[1];
+                  return acc;
+                }},
+                {{ x: 0, y: 0 }}
+              );
+              const count = contour.length || 1;
+              const labelX = ((centroid.x / count) - minX) * scale + padding;
+              const labelY = (maxY - centroid.y / count) * scale + padding;
+              ctx.fillText(String(contourIndex + 1), labelX + 4, labelY - 4);
             }});
             plotInfo.textContent =
               "Bounds: X " +

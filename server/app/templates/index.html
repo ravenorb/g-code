@@ -53,36 +53,20 @@
       .hidden {
         display: none;
       }
-      .parts-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-top: 0.75rem;
-      }
-      .part-chip {
-        display: inline-flex;
-        flex-direction: column;
-        gap: 0.2rem;
-        padding: 0.6rem 0.8rem;
-        border-radius: 8px;
-        border: 1px solid #cbd5e1;
-        background: #ffffff;
-        color: inherit;
-        text-decoration: none;
-        min-width: 160px;
-      }
-      .part-chip:hover {
-        border-color: #0ea5e9;
-        box-shadow: 0 2px 6px rgba(14, 165, 233, 0.2);
-      }
-      .part-chip strong {
-        font-size: 1rem;
-      }
       .sheet-canvas {
         border: 1px solid #cbd5e1;
         border-radius: 6px;
         background: #ffffff;
         margin-top: 0.5rem;
+      }
+      .code-box {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 0.75rem;
+        border-radius: 6px;
+        overflow-y: auto;
+        max-height: 360px;
+        white-space: pre;
       }
     </style>
   </head>
@@ -117,22 +101,8 @@
         <tbody></tbody>
       </table>
 
-      <h2>Parsed Fields</h2>
-      <table id="parsed-table">
-        <thead>
-          <tr>
-            <th>Line</th>
-            <th>Raw</th>
-            <th>Field</th>
-            <th>Value</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-
-      <h2>Parts</h2>
-      <p id="parts-info" class="hidden"></p>
-      <div id="parts-row" class="parts-row"></div>
+      <h2>Original File Code</h2>
+      <pre id="raw-code" class="code-box"></pre>
 
       <h2>Sheet Layout</h2>
       <p id="sheet-info" class="hidden"></p>
@@ -146,12 +116,12 @@
       const summaryEl = document.getElementById("summary");
       const storageEl = document.getElementById("storage");
       const diagnosticsBody = document.querySelector("#diagnostics-table tbody");
-      const parsedBody = document.querySelector("#parsed-table tbody");
-      const partsRow = document.getElementById("parts-row");
-      const partsInfo = document.getElementById("parts-info");
+      const rawCode = document.getElementById("raw-code");
       const sheetInfo = document.getElementById("sheet-info");
       const sheetCanvas = document.getElementById("sheet-canvas");
       let lastJobId = null;
+      let lastJob = null;
+      let sheetHotspots = [];
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -162,9 +132,8 @@
         statusEl.textContent = "Uploading and validating...";
         resultsCard.classList.add("hidden");
         diagnosticsBody.innerHTML = "";
-        parsedBody.innerHTML = "";
-        partsRow.innerHTML = "";
-        partsInfo.classList.add("hidden");
+        rawCode.textContent = "";
+        sheetHotspots = [];
         lastJobId = null;
 
         const formData = new FormData();
@@ -184,12 +153,11 @@
 
           const data = await response.json();
           lastJob = data;
+          lastJobId = data.job_id;
           renderSummary(data);
           renderDiagnostics(data.diagnostics);
-          renderParsed(data.parsed_lines);
-          renderParts(data.parts, data.job_id);
+          renderRawCode(data.raw_program || []);
           renderSheet(data.setup, data.parts);
-          lastJobId = data.job_id;
 
           statusEl.textContent = "Validation completed.";
           resultsCard.classList.remove("hidden");
@@ -229,53 +197,20 @@
         });
       }
 
-      function renderParsed(parsedLines) {
-        parsedBody.innerHTML = "";
-        if (!parsedLines.length) {
-          parsedBody.innerHTML = `<tr><td colspan="4">No parsed lines</td></tr>`;
+      function renderRawCode(lines) {
+        if (!lines.length) {
+          rawCode.textContent = "No program lines available.";
           return;
         }
-        parsedLines.forEach((line) => {
-          line.fields.forEach((field, idx) => {
-            const row = document.createElement("tr");
-            row.innerHTML = `
-              <td>${idx === 0 ? line.line_number : ""}</td>
-              <td>${idx === 0 ? line.raw : ""}</td>
-              <td>${field.name}</td>
-              <td>${field.value}</td>
-            `;
-            parsedBody.appendChild(row);
-          });
-        });
-      }
-
-      function renderParts(parts, jobId) {
-        partsRow.innerHTML = "";
-        partsInfo.classList.add("hidden");
-
-        if (!parts.length) {
-          partsInfo.textContent = "No parts were detected in this file.";
-          partsInfo.classList.remove("hidden");
-          return;
-        }
-
-        parts.forEach((part) => {
-          const link = document.createElement("a");
-          link.className = "part-chip";
-          link.href = `/jobs/${jobId}/parts/${part.part_line}/view`;
-          link.innerHTML = `
-            <strong>Part N${part.part_line}</strong>
-            <span>Contours: ${part.contours}</span>
-            <span>Lines: ${part.start_line}–${part.end_line}</span>
-          `;
-          partsRow.appendChild(link);
-        });
+        rawCode.textContent = lines.join("\n");
       }
 
       function renderSheet(setup, parts) {
         const ctx = sheetCanvas.getContext("2d");
         ctx.clearRect(0, 0, sheetCanvas.width, sheetCanvas.height);
         sheetInfo.classList.add("hidden");
+        sheetHotspots = [];
+        sheetCanvas.style.cursor = parts.length ? "pointer" : "default";
 
         if (!setup || !setup.sheetX || !setup.sheetY) {
           sheetInfo.textContent = "No HKINI sheet size found for this file.";
@@ -302,47 +237,82 @@
         const palette = ["#2563eb", "#16a34a", "#f97316", "#8b5cf6", "#0ea5e9"];
         ctx.font = "12px Arial";
         parts.forEach((part, index) => {
-          if (part.anchor_x == null || part.anchor_y == null) return;
-          const offsetX = part.anchor_x;
-          const offsetY = part.anchor_y;
           const color = palette[index % palette.length];
           const contours = part.plot_points || [];
+          let minX = null;
+          let minY = null;
+          let maxX = null;
+          let maxY = null;
 
           if (contours.length) {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1.5;
-            contours.forEach((contour) => {
-              if (!contour.length) return;
-              ctx.beginPath();
-              contour.forEach((point, pointIndex) => {
-                const x = originX + (offsetX + point[0]) * scale;
-                const y = originY + (sheetHeight - (offsetY + point[1])) * scale;
-                if (pointIndex === 0) {
-                  ctx.moveTo(x, y);
-                } else {
-                  ctx.lineTo(x, y);
-                }
-              });
-              ctx.stroke();
+            contours.flat().forEach((point) => {
+              const x = (part.anchor_x ?? 0) + point[0];
+              const y = (part.anchor_y ?? 0) + point[1];
+              minX = minX === null ? x : Math.min(minX, x);
+              minY = minY === null ? y : Math.min(minY, y);
+              maxX = maxX === null ? x : Math.max(maxX, x);
+              maxY = maxY === null ? y : Math.max(maxY, y);
             });
-          } else {
-            ctx.fillStyle = color;
-            const x = originX + offsetX * scale;
-            const y = originY + (sheetHeight - offsetY) * scale;
-            ctx.beginPath();
-            ctx.arc(x, y, 4, 0, Math.PI * 2);
-            ctx.fill();
           }
 
-          const labelX = originX + offsetX * scale;
-          const labelY = originY + (sheetHeight - offsetY) * scale;
+          if (minX === null || minY === null || maxX === null || maxY === null) {
+            if (part.anchor_x == null || part.anchor_y == null) {
+              return;
+            }
+            minX = part.anchor_x - 5;
+            maxX = part.anchor_x + 5;
+            minY = part.anchor_y - 5;
+            maxY = part.anchor_y + 5;
+          }
+
+          let boxX = originX + minX * scale;
+          let boxY = originY + (sheetHeight - maxY) * scale;
+          let boxW = (maxX - minX) * scale;
+          let boxH = (maxY - minY) * scale;
+          const minBoxSize = 12;
+          if (boxW < minBoxSize) {
+            boxX -= (minBoxSize - boxW) / 2;
+            boxW = minBoxSize;
+          }
+          if (boxH < minBoxSize) {
+            boxY -= (minBoxSize - boxH) / 2;
+            boxH = minBoxSize;
+          }
+
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 4]);
+          ctx.strokeRect(boxX, boxY, boxW, boxH);
+          ctx.setLineDash([]);
+
           ctx.fillStyle = color;
-          ctx.fillText(`N${part.part_line}`, labelX + 6, labelY - 6);
+          ctx.fillText(`P${part.part_number}`, boxX + 4, boxY + 14);
+
+          sheetHotspots.push({
+            x: boxX,
+            y: boxY,
+            width: boxW,
+            height: boxH,
+            url: `/jobs/${lastJobId}/parts/${part.part_number}/view`,
+          });
         });
 
-        sheetInfo.textContent = `Sheet: ${sheetWidth} × ${sheetHeight}`;
+        sheetInfo.textContent = `Sheet: ${sheetWidth} × ${sheetHeight} — Click a part to open.`;
         sheetInfo.classList.remove("hidden");
       }
+
+      sheetCanvas.addEventListener("click", (event) => {
+        if (!sheetHotspots.length) return;
+        const rect = sheetCanvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const hit = sheetHotspots.find(
+          (spot) => x >= spot.x && x <= spot.x + spot.width && y >= spot.y && y <= spot.y + spot.height
+        );
+        if (hit) {
+          window.location.href = hit.url;
+        }
+      });
     </script>
   </body>
 </html>

@@ -135,7 +135,7 @@ class ValidationService:
         termination_line = None
         termination_command = None
         for line in parsed:
-            if line.command.upper() in {"M30", "HKEND"}:
+            if line.command.upper() == "M30":
                 termination_line = line.line_number
                 termination_command = line.command.upper()
                 break

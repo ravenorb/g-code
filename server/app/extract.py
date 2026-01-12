@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, List, Tuple
 
+from .parser import extract_part_contour_block
+
 
 HKOST_PATTERN = re.compile(r"HKOST\((?P<params>[^)]*)\)", re.IGNORECASE)
 HKSTR_PATTERN = re.compile(r"HKSTR\((?P<params>[^)]*)\)", re.IGNORECASE)
@@ -20,7 +22,12 @@ class PartExtractionResult:
     height: float
 
 
-def extract_part_program(content: str, part_label: int, margin: float = 0.0) -> PartExtractionResult:
+def extract_part_program(
+    content: str,
+    part_label: int,
+    margin: float = 0.0,
+    extra_contours: List[tuple[int, int]] | None = None,
+) -> PartExtractionResult:
     """Create a standalone program that contains only the requested part definition."""
     lines = [line.rstrip() for line in content.splitlines() if line.strip()]
     label_to_index = _index_labels(lines)
@@ -41,6 +48,14 @@ def extract_part_program(content: str, part_label: int, margin: float = 0.0) -> 
         raise ValueError("Unable to find HKPED terminator for part.")
 
     part_lines = lines[block_start : block_end + 1]
+    if extra_contours:
+        extra_blocks = [
+            extract_part_contour_block(lines, part_line, contour_index)
+            for part_line, contour_index in extra_contours
+        ]
+        extra_blocks = [block for block in extra_blocks if block]
+        if extra_blocks:
+            part_lines = _insert_extra_contours(part_lines, extra_blocks)
     trailer_lines, _ = _collect_until_hkppp(lines, hkost_idx)
     min_x, min_y, max_x, max_y = _bounds_for_block(part_lines)
     dx, dy = min_x, min_y
@@ -102,6 +117,39 @@ def _index_labels(lines: List[str]) -> dict[int, int]:
         if match:
             mapping[int(match.group(1))] = idx
     return mapping
+
+
+def _strip_label(line: str) -> tuple[int | None, str]:
+    match = LINE_LABEL_PATTERN.match(line)
+    if not match:
+        return None, line.lstrip()
+    return int(match.group(1)), line[match.end() :].lstrip()
+
+
+def _insert_extra_contours(part_lines: List[str], extra_blocks: List[List[str]]) -> List[str]:
+    hkped_index = None
+    for idx, line in enumerate(part_lines):
+        if "HKPED" in line.upper():
+            hkped_index = idx
+            break
+
+    if hkped_index is None:
+        return part_lines
+
+    labels = [label for line in part_lines if (label := _strip_label(line)[0]) is not None]
+    next_label = (max(labels) if labels else 0) + 1
+
+    updated_lines = part_lines[:hkped_index]
+    for block in extra_blocks:
+        for line in block:
+            _, content = _strip_label(line)
+            updated_lines.append(f"N{next_label} {content}".rstrip())
+            next_label += 1
+
+    _, hkped_content = _strip_label(part_lines[hkped_index])
+    updated_lines.append(f"N{next_label} {hkped_content}".rstrip())
+    updated_lines.extend(part_lines[hkped_index + 1 :])
+    return updated_lines
 
 
 def _extract_profile_line(hkost_line: str) -> int | None:

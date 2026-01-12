@@ -168,6 +168,7 @@ class StorageManager:
             "summary": validation.summary,
             "parts": [
                 {
+                    "partNumber": part.part_number,
                     "partLine": part.part_line,
                     "hkostLine": part.hkost_line,
                     "profileLine": part.profile_line,

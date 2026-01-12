@@ -34,6 +34,7 @@ class ParsedLineModel(BaseModel):
 
 
 class PartSummaryModel(BaseModel):
+    part_number: int = Field(description="Sequential part number starting at 1.")
     part_line: int = Field(description="Line label for the HKOST declaration (e.g., 10000).")
     hkost_line: int = Field(description="Line number where the HKOST declaration appears in the file.")
     profile_line: Optional[int] = Field(
@@ -66,6 +67,7 @@ class ValidationResponse(BaseModel):
     parsed_lines: List[ParsedLineModel] = Field(default_factory=list)
     parts: List[PartSummaryModel] = Field(default_factory=list)
     setup: Optional[SheetSetupModel] = Field(default=None, description="Sheet setup details parsed from HKINI.")
+    raw_program: List[str] = Field(default_factory=list, description="Original program lines as uploaded.")
 
 
 class ReleaseRequest(BaseModel):

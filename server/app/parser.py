@@ -175,6 +175,22 @@ def extract_part_block(lines: List[str], part_line: int) -> List[str]:
     return lines[start_index : end_index + 1]
 
 
+def extract_part_contour_blocks(lines: List[str], part_line: int) -> List[List[str]]:
+    part_block = extract_part_block(lines, part_line)
+    if not part_block:
+        return []
+    return _split_contour_blocks(part_block)
+
+
+def extract_part_contour_block(lines: List[str], part_line: int, contour_index: int) -> List[str]:
+    if contour_index < 1:
+        return []
+    contour_blocks = extract_part_contour_blocks(lines, part_line)
+    if contour_index > len(contour_blocks):
+        return []
+    return contour_blocks[contour_index - 1]
+
+
 def build_part_plot_points(lines: List[str]) -> List[List[tuple[float, float]]]:
     contour_blocks = _split_contour_blocks(lines)
     contours: List[List[tuple[float, float]]] = []

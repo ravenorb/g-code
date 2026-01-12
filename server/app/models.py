@@ -50,9 +50,18 @@ class PartSummaryModel(BaseModel):
     )
 
 
+class ContourPlotModel(BaseModel):
+    label: str
+    points: List[List[float]]
+
+
 class PartDetailModel(PartSummaryModel):
     profile_block: List[str] = Field(default_factory=list, description="Profile block lines for the selected part.")
     part_program: List[str] = Field(default_factory=list, description="Standalone program to cut just this part.")
+    plot_contours: List[ContourPlotModel] = Field(
+        default_factory=list,
+        description="Plot contours with labels for the selected part.",
+    )
 
 
 class SheetSetupModel(BaseModel):

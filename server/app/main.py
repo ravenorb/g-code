@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
@@ -12,6 +14,7 @@ from .config import DEFAULT_CONFIG, ServiceConfig
 from .diagnostics import ValidationService, hash_payload
 from .extract import extract_part_profile_program, extract_part_program
 from .models import (
+    ContourPlotModel,
     DiagnosticModel,
     ExtractRequest,
     ExtractResponse,
@@ -28,7 +31,7 @@ from .models import (
     ValidationSummary,
 )
 from .release import ReleaseManager
-from .parser import build_part_plot_points, extract_part_block, load_from_bytes
+from .parser import build_part_plot_points, extract_part_block, extract_part_contour_block, load_from_bytes
 from .storage import StorageManager, extract_sheet_setup
 
 app = FastAPI(title="HK Parser Service", version="0.1.0")
@@ -255,6 +258,7 @@ def _to_part_model(part, raw_lines: list[str]) -> PartSummaryModel:
 async def part_detail(
     job_id: str,
     part_number: int,
+    extra_contours: Optional[str] = None,
     release_manager: ReleaseManager = Depends(get_release_manager),
 ) -> PartDetailModel:
     validation = release_manager.get_validation(job_id)
@@ -267,9 +271,38 @@ async def part_detail(
 
     contour_block = extract_part_block(validation.raw_lines, part.part_line)
     plot_points = build_part_plot_points(contour_block)
+    extra_contour_refs = _parse_extra_contours(extra_contours, validation.parts)
+    extra_contour_blocks = [
+        (
+            ref.part_number,
+            ref.contour_index,
+            extract_part_contour_block(validation.raw_lines, ref.part_line, ref.contour_index),
+        )
+        for ref in extra_contour_refs
+    ]
+    plot_contours = [
+        ContourPlotModel(label=str(idx + 1), points=[[float(point[0]), float(point[1])] for point in contour])
+        for idx, contour in enumerate(plot_points)
+    ]
+    for part_number_ref, contour_index, block in extra_contour_blocks:
+        if not block:
+            continue
+        extra_points = build_part_plot_points(block)
+        if not extra_points:
+            continue
+        plot_contours.append(
+            ContourPlotModel(
+                label=f"{part_number_ref}.{contour_index}",
+                points=[[float(point[0]), float(point[1])] for point in extra_points[0]],
+            )
+        )
     content = "\n".join(validation.raw_lines)
     profile_block = extract_part_profile_program(content, part.part_line).lines
-    part_program = extract_part_program(content, part.part_line).lines
+    part_program = extract_part_program(
+        content,
+        part.part_line,
+        extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
+    ).lines
     return PartDetailModel(
         part_number=part.part_number,
         part_line=part.part_line,
@@ -282,6 +315,7 @@ async def part_detail(
         anchor_y=part.anchor_y,
         profile_block=profile_block,
         plot_points=[[list(point) for point in contour] for contour in plot_points],
+        plot_contours=plot_contours,
         part_program=part_program,
     )
 
@@ -301,6 +335,29 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             margin: 2rem;
             background: #f8fafc;
             color: #0f172a;
+          }}
+          .row {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+          }}
+          .row label {{
+            font-weight: 600;
+          }}
+          .row input {{
+            padding: 0.35rem 0.5rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            min-width: 120px;
+          }}
+          .row button {{
+            padding: 0.4rem 0.75rem;
+            border-radius: 4px;
+            border: 1px solid #1e293b;
+            background: #1e293b;
+            color: #ffffff;
+            cursor: pointer;
           }}
           .card {{
             background: #ffffff;
@@ -333,6 +390,18 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           <p id="plot-info"></p>
         </div>
         <div class="card">
+          <h2>Additional Contours</h2>
+          <p>Enter up to 3 extra contours as <strong>part.contour</strong> (example: <code>2.4</code>).</p>
+          <div class="row">
+            <label for="extra-contour-1">Extra contour</label>
+            <input id="extra-contour-1" class="extra-contour" placeholder="2.4" />
+            <input id="extra-contour-2" class="extra-contour" placeholder="3.1" />
+            <input id="extra-contour-3" class="extra-contour" placeholder="5.2" />
+            <button id="apply-contours" type="button">Apply</button>
+          </div>
+          <p id="contour-status"></p>
+        </div>
+        <div class="card">
           <h2>Part Profile Code</h2>
           <pre id="profile-code"></pre>
         </div>
@@ -345,9 +414,24 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           const plotInfo = document.getElementById("plot-info");
           const profileCode = document.getElementById("profile-code");
           const partProgram = document.getElementById("part-program");
+          const contourStatus = document.getElementById("contour-status");
+          const contourInputs = Array.from(document.querySelectorAll(".extra-contour"));
+          const applyContours = document.getElementById("apply-contours");
 
-          async function loadPart() {{
-            const resp = await fetch("/jobs/{job_id}/parts/{part_number}");
+          function getExtraContours() {{
+            return contourInputs.map((input) => input.value.trim()).filter(Boolean);
+          }}
+
+          function buildQueryString(entries) {{
+            if (!entries.length) return "";
+            const query = new URLSearchParams();
+            query.set("extra_contours", entries.join(","));
+            return `?${{query.toString()}}`;
+          }}
+
+          async function loadPart(entries = getExtraContours()) {{
+            const queryString = buildQueryString(entries);
+            const resp = await fetch(`/jobs/{job_id}/parts/{part_number}${{queryString}}`);
             if (!resp.ok) {{
               plotInfo.textContent = "Unable to load part details.";
               return;
@@ -355,17 +439,23 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             const data = await resp.json();
             profileCode.textContent = (data.profile_block || []).join("\\n");
             partProgram.textContent = (data.part_program || []).join("\\n");
-            renderPlot(data.plot_points || []);
+            renderPlot(data.plot_contours || data.plot_points || []);
+            contourStatus.textContent = entries.length
+              ? `Including extra contours: ${{entries.join(", ")}}`
+              : "No extra contours selected.";
           }}
 
-          function renderPlot(points) {{
+          function renderPlot(contours) {{
             const ctx = plotCanvas.getContext("2d");
             ctx.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
-            if (!points.length) {{
+            const normalizedContours = Array.isArray(contours[0]?.points)
+              ? contours
+              : contours.map((points, index) => ({{ label: String(index + 1), points }}));
+            if (!normalizedContours.length) {{
               plotInfo.textContent = "No plot data found for this part.";
               return;
             }}
-            const flatPoints = points.flat();
+            const flatPoints = normalizedContours.flatMap((contour) => contour.points);
             if (!flatPoints.length) {{
               plotInfo.textContent = "No plot data found for this part.";
               return;
@@ -387,10 +477,10 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             ctx.lineWidth = 2;
             ctx.font = "13px Arial";
             ctx.fillStyle = "#0f172a";
-            points.forEach((contour, contourIndex) => {{
-              if (!contour.length) return;
+            normalizedContours.forEach((contour, contourIndex) => {{
+              if (!contour.points.length) return;
               ctx.beginPath();
-              contour.forEach((point, index) => {{
+              contour.points.forEach((point, index) => {{
                 const x = (point[0] - minX) * scale + padding;
                 const y = (maxY - point[1]) * scale + padding;
                 if (index === 0) {{
@@ -400,7 +490,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
                 }}
               }});
               ctx.stroke();
-              const centroid = contour.reduce(
+              const centroid = contour.points.reduce(
                 (acc, point) => {{
                   acc.x += point[0];
                   acc.y += point[1];
@@ -408,10 +498,10 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
                 }},
                 {{ x: 0, y: 0 }}
               );
-              const count = contour.length || 1;
+              const count = contour.points.length || 1;
               const labelX = ((centroid.x / count) - minX) * scale + padding;
               const labelY = (maxY - centroid.y / count) * scale + padding;
-              ctx.fillText(String(contourIndex + 1), labelX + 4, labelY - 4);
+              ctx.fillText(contour.label || String(contourIndex + 1), labelX + 4, labelY - 4);
             }});
             plotInfo.textContent =
               "Bounds: X " +
@@ -424,12 +514,69 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               maxY;
           }}
 
+          function syncInputsFromUrl() {{
+            const params = new URLSearchParams(window.location.search);
+            const raw = params.get("extra_contours");
+            if (!raw) return;
+            raw.split(",").slice(0, contourInputs.length).forEach((value, index) => {{
+              contourInputs[index].value = value.trim();
+            }});
+          }}
+
+          applyContours.addEventListener("click", () => {{
+            const entries = getExtraContours();
+            const queryString = buildQueryString(entries);
+            const url = new URL(window.location.href);
+            url.search = queryString ? queryString.slice(1) : "";
+            window.history.replaceState({{}}, "", url);
+            loadPart(entries);
+          }});
+
+          syncInputsFromUrl();
           loadPart();
         </script>
       </body>
     </html>
     """
     return HTMLResponse(html)
+
+
+@dataclass
+class ExtraContourRef:
+    part_number: int
+    part_line: int
+    contour_index: int
+
+
+def _parse_extra_contours(raw: Optional[str], parts: list[PartSummaryModel]) -> list[ExtraContourRef]:
+    if not raw:
+        return []
+    tokens = [token.strip() for token in raw.split(",") if token.strip()]
+    if not tokens:
+        return []
+    refs: list[ExtraContourRef] = []
+    pattern = re.compile(r"^(?P<part>\d+)\s*\.\s*(?P<contour>\d+)$")
+    for token in tokens:
+        match = pattern.match(token)
+        if not match:
+            continue
+        part_number = int(match.group("part"))
+        contour_index = int(match.group("contour"))
+        part = next((p for p in parts if p.part_number == part_number), None)
+        if part is None:
+            continue
+        if contour_index < 1 or contour_index > part.contours:
+            continue
+        refs.append(
+            ExtraContourRef(
+                part_number=part_number,
+                part_line=part.part_line,
+                contour_index=contour_index,
+            )
+        )
+        if len(refs) >= 3:
+            break
+    return refs
 
 
 def _build_display_lines(result) -> list[ParsedLineModel]:

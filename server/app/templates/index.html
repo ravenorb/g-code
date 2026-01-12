@@ -310,7 +310,10 @@
           (spot) => x >= spot.x && x <= spot.x + spot.width && y >= spot.y && y <= spot.y + spot.height
         );
         if (hit) {
-          window.location.href = hit.url;
+          const newTab = window.open(hit.url, "_blank", "noopener");
+          if (!newTab) {
+            window.location.href = hit.url;
+          }
         }
       });
     </script>

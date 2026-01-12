@@ -235,6 +235,17 @@
         ctx.strokeRect(originX, originY, drawWidth, drawHeight);
 
         const palette = ["#2563eb", "#16a34a", "#f97316", "#8b5cf6", "#0ea5e9"];
+        const flipParts180 = true;
+        const transformPoint = (x, y) => {
+          if (!flipParts180) {
+            return { x, y };
+          }
+          return { x: sheetWidth - x, y: sheetHeight - y };
+        };
+        const toCanvas = ({ x, y }) => ({
+          x: originX + x * scale,
+          y: originY + (sheetHeight - y) * scale,
+        });
         ctx.font = "12px Arial";
         parts.forEach((part, index) => {
           const color = palette[index % palette.length];
@@ -246,8 +257,9 @@
 
           if (contours.length) {
             contours.flat().forEach((point) => {
-              const x = (part.anchor_x ?? 0) + point[0];
-              const y = (part.anchor_y ?? 0) + point[1];
+              const baseX = (part.anchor_x ?? 0) + point[0];
+              const baseY = (part.anchor_y ?? 0) + point[1];
+              const { x, y } = transformPoint(baseX, baseY);
               minX = minX === null ? x : Math.min(minX, x);
               minY = minY === null ? y : Math.min(minY, y);
               maxX = maxX === null ? x : Math.max(maxX, x);
@@ -259,10 +271,11 @@
             if (part.anchor_x == null || part.anchor_y == null) {
               return;
             }
-            minX = part.anchor_x - 5;
-            maxX = part.anchor_x + 5;
-            minY = part.anchor_y - 5;
-            maxY = part.anchor_y + 5;
+            const { x, y } = transformPoint(part.anchor_x, part.anchor_y);
+            minX = x - 5;
+            maxX = x + 5;
+            minY = y - 5;
+            maxY = y + 5;
           }
 
           let boxX = originX + minX * scale;
@@ -286,8 +299,11 @@
             if (contour.length < 2) return;
             ctx.beginPath();
             contour.forEach((point, pointIndex) => {
-              const x = originX + ((part.anchor_x ?? 0) + point[0]) * scale;
-              const y = originY + (sheetHeight - ((part.anchor_y ?? 0) + point[1])) * scale;
+              const baseX = (part.anchor_x ?? 0) + point[0];
+              const baseY = (part.anchor_y ?? 0) + point[1];
+              const canvasPoint = toCanvas(transformPoint(baseX, baseY));
+              const x = canvasPoint.x;
+              const y = canvasPoint.y;
               if (pointIndex === 0) {
                 ctx.moveTo(x, y);
               } else {

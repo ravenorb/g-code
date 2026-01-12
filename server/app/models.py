@@ -34,15 +34,16 @@ class ParsedLineModel(BaseModel):
 
 
 class PartSummaryModel(BaseModel):
-    hkost_line: int = Field(description="Line label for the HKOST declaration (e.g., 10000).")
-    profile_line: Optional[int] = Field(default=None, description="Profile line label referenced by HKOST.")
+    part_line: int = Field(description="Line label for the HKSTR declaration (e.g., 10001).")
+    start_line: int = Field(description="Line number where the HKSTR block starts in the file.")
+    end_line: int = Field(description="Line number where the HKSTR block ends in the file.")
     contours: int = Field(description="Number of G-code contour lines between HKCUT and HKSTO.")
-    x: Optional[float] = Field(default=None, description="X coordinate from the HKOST declaration.")
-    y: Optional[float] = Field(default=None, description="Y coordinate from the HKOST declaration.")
 
 
 class PartDetailModel(PartSummaryModel):
     profile_block: List[str] = Field(default_factory=list, description="Profile block lines for the selected part.")
+    plot_points: List[List[float]] = Field(default_factory=list, description="Plot points extracted from the profile block.")
+    part_program: List[str] = Field(default_factory=list, description="Standalone program to cut just this part.")
 
 
 class SheetSetupModel(BaseModel):

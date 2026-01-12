@@ -54,14 +54,11 @@ async def test_release_rejects_invalid_job(client):
 @pytest.mark.anyio
 async def test_upload_reports_part_and_contour_counts(client):
     payload = (
-        "N10000 HKOST(0.3,6.8,0.00,10001,1,0,0,0)\n"
-        "N1 M3 S1000\n"
         "N10001 HKSTR(1,1,0,0,0,0,0,0)\n"
         "HKCUT(0,0,0)\n"
         "G1 X0 Y0\n"
         "G1 X1 Y1\n"
         "HKSTO(0,0,0)\n"
-        "N20000 HKOST(0.3,6.8,0.00,20001,1,0,0,0)\n"
         "N20001 HKSTR(1,1,0,0,0,0,0,0)\n"
         "HKCUT(0,0,0)\n"
         "G1 X0 Y0\n"
@@ -74,7 +71,9 @@ async def test_upload_reports_part_and_contour_counts(client):
     assert "parts" in body
     assert len(body["parts"]) == 2
     contours = [part["contours"] for part in body["parts"]]
+    part_lines = [part["part_line"] for part in body["parts"]]
     assert contours == [2, 1]
+    assert part_lines == [10001, 20001]
 
 
 @pytest.mark.anyio
@@ -109,7 +108,7 @@ async def test_upload_persists_metadata_and_extracts_part(client):
     assert Path(upload_body["stored_path"]).exists()
     assert Path(upload_body["meta_path"]).exists()
 
-    part_label = upload_body["parts"][0]["hkost_line"]
+    part_label = 10000
     extract_response = await client.post(
         "/extract",
         json={"job_id": upload_body["job_id"], "part_label": part_label, "margin": 0.1},

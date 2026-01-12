@@ -161,8 +161,9 @@ class StorageManager:
             "summary": validation.summary,
             "parts": [
                 {
-                    "hkostLine": part.hkost_line,
-                    "profileLine": part.profile_line,
+                    "partLine": part.part_line,
+                    "startLine": part.start_line,
+                    "endLine": part.end_line,
                     "contours": part.contours,
                 }
                 for part in validation.parts

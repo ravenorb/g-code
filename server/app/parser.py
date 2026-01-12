@@ -8,8 +8,10 @@ from parser.command_catalog import describe_command
 
 LINE_RE = re.compile(r"^(?P<command>[A-Z]+[0-9]*[A-Z]?)(?P<rest>.*)$")
 PARAM_RE = re.compile(r"(?<![A-Za-z0-9_$])([A-Za-z])([-+]?(?:\d+(?:\.\d*)?|\.\d+))")
-HKOST_RE = re.compile(r"^N(?P<label>\d+)\s+HKOST\((?P<params>[^)]*)\)", re.IGNORECASE)
+HKSTR_RE = re.compile(r"HKSTR\((?P<params>[^)]*)\)", re.IGNORECASE)
+HKSTO_RE = re.compile(r"HKSTO\((?P<params>[^)]*)\)", re.IGNORECASE)
 LINE_LABEL_RE = re.compile(r"^N(?P<label>\d+)", re.IGNORECASE)
+COORD_RE = re.compile(r"([XY])([-+]?\d*\.?\d+)")
 
 
 @dataclass
@@ -26,11 +28,10 @@ class ParsedLine:
 class PartSummary:
     """Describes a part definition and its contour count."""
 
-    hkost_line: int
-    profile_line: Optional[int]
+    part_line: int
+    start_line: int
+    end_line: int
     contours: int
-    x: Optional[float] = None
-    y: Optional[float] = None
 
 
 class HKParser:
@@ -83,51 +84,42 @@ class HKParser:
         return parsed
 
     def summarize_parts(self, lines: Iterable[str]) -> List[PartSummary]:
-        """Identify HKOST part declarations and contour counts.
+        """Identify HKSTR part blocks and contour counts.
 
-        Each HKOST line references a profile line (the 4th comma-separated
-        parameter) such as ``N10000 HKOST(...,10001,...)``. Starting from the
-        referenced line, contours are counted as the number of ``G`` lines that
-        appear between the first ``HKCUT`` and the next ``HKSTO``.
+        Each part starts at a ``HKSTR`` line and ends at the next ``HKSTO``.
+        Contours are counted as the number of ``G`` lines that appear between
+        the first ``HKCUT`` and the next ``HKSTO`` within that block.
         """
 
         normalized_lines = [line.strip() for line in lines]
-        label_to_index: Dict[int, int] = {}
-        for idx, line in enumerate(normalized_lines):
-            label_match = LINE_LABEL_RE.match(line)
-            if label_match:
-                label_to_index[int(label_match.group("label"))] = idx
-
         parts: List[PartSummary] = []
         for idx, line in enumerate(normalized_lines):
-            match = HKOST_RE.match(line)
-            if not match:
+            if not HKSTR_RE.search(line):
                 continue
 
-            hkost_line = int(match.group("label"))
-            hkost_params = _parse_hkost_params(match.group("params"))
-            profile_line = _extract_profile_line(match.group("params"))
-            contours = self._count_contours(normalized_lines, label_to_index.get(profile_line))
+            label_match = LINE_LABEL_RE.match(line)
+            part_line = int(label_match.group("label")) if label_match else idx + 1
+            end_index = _find_part_end(normalized_lines, idx)
+            contours = self._count_contours(normalized_lines, idx, end_index)
             parts.append(
                 PartSummary(
-                    hkost_line=hkost_line,
-                    profile_line=profile_line,
+                    part_line=part_line,
+                    start_line=idx + 1,
+                    end_line=end_index + 1,
                     contours=contours,
-                    x=hkost_params[0] if len(hkost_params) > 0 else None,
-                    y=hkost_params[1] if len(hkost_params) > 1 else None,
                 )
             )
 
         return parts
 
     @staticmethod
-    def _count_contours(lines: List[str], start_index: Optional[int]) -> int:
-        if start_index is None:
+    def _count_contours(lines: List[str], start_index: int, end_index: int) -> int:
+        if start_index < 0 or end_index < start_index:
             return 0
 
         contours = 0
         cut_started = False
-        for line in lines[start_index:]:
+        for line in lines[start_index : end_index + 1]:
             normalized = line.strip()
             upper_line = normalized.upper()
 
@@ -162,49 +154,68 @@ def _strip_line_label(line: str) -> str:
     return line[match.end() :].lstrip()
 
 
-def _extract_profile_line(params_text: str) -> Optional[int]:
-    params = [part.strip() for part in params_text.split(",") if part.strip()]
-    if len(params) < 4:
-        return None
-    try:
-        return int(float(params[3]))
-    except ValueError:
-        return None
-
-
-def _parse_hkost_params(params_text: str) -> List[float]:
-    parts = []
-    for param in params_text.split(","):
-        cleaned = param.strip()
-        if not cleaned:
-            continue
-        try:
-            parts.append(float(cleaned))
-        except ValueError:
-            continue
-    return parts
-
-
-def extract_profile_block(lines: List[str], profile_line: Optional[int]) -> List[str]:
-    if profile_line is None:
-        return []
-
-    normalized_profile = f"N{profile_line}".upper()
+def extract_part_block(lines: List[str], part_line: int) -> List[str]:
+    label_prefix = f"N{part_line}".upper()
     start_index: Optional[int] = None
     for idx, line in enumerate(lines):
-        if line.strip().upper().startswith(normalized_profile):
+        cleaned = line.strip().upper()
+        if cleaned.startswith(label_prefix) and HKSTR_RE.search(cleaned):
             start_index = idx
             break
 
     if start_index is None:
         return []
 
-    block: List[str] = []
-    for line in lines[start_index:]:
-        block.append(line)
-        if "HKSTO" in line.upper():
-            break
-    return block
+    end_index = _find_part_end([line.strip() for line in lines], start_index)
+    return lines[start_index : end_index + 1]
+
+
+def build_part_plot_points(lines: List[str]) -> List[tuple[float, float]]:
+    points: List[tuple[float, float]] = []
+    current_x: Optional[float] = None
+    current_y: Optional[float] = None
+
+    for line in lines:
+        match = HKSTR_RE.search(line)
+        if match:
+            params = [p.strip() for p in match.group("params").split(",") if p.strip()]
+            if len(params) >= 4:
+                try:
+                    start_x = float(params[2])
+                    start_y = float(params[3])
+                    points.append((start_x, start_y))
+                    current_x, current_y = start_x, start_y
+                except ValueError:
+                    pass
+            if len(params) >= 7:
+                try:
+                    lead_x = float(params[5])
+                    lead_y = float(params[6])
+                    points.append((lead_x, lead_y))
+                    current_x, current_y = lead_x, lead_y
+                except ValueError:
+                    pass
+            continue
+
+        coords = {axis.upper(): float(value) for axis, value in COORD_RE.findall(line)}
+        if not coords:
+            continue
+        next_x = coords.get("X", current_x)
+        next_y = coords.get("Y", current_y)
+        if next_x is None or next_y is None:
+            continue
+        if current_x is None or current_y is None or (next_x, next_y) != (current_x, current_y):
+            points.append((next_x, next_y))
+        current_x, current_y = next_x, next_y
+
+    return points
+
+
+def _find_part_end(lines: List[str], start_index: int) -> int:
+    for idx in range(start_index, len(lines)):
+        if HKSTO_RE.search(lines[idx]):
+            return idx
+    return len(lines) - 1
 
 
 def _parse_hk_params(params_text: str) -> List[str]:

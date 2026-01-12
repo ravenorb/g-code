@@ -75,6 +75,51 @@ def extract_part_program(content: str, part_label: int, margin: float = 0.0) -> 
     return PartExtractionResult(lines=output, width=width, height=height)
 
 
+def extract_part_profile_program(content: str, part_line: int, margin: float = 0.0) -> PartExtractionResult:
+    """Create a standalone program that contains only the HKSTR -> HKSTO block."""
+    lines = [line.rstrip() for line in content.splitlines() if line.strip()]
+    label_to_index = _index_labels(lines)
+    if part_line not in label_to_index:
+        raise ValueError(f"Part line {part_line} not found.")
+
+    start_idx = label_to_index[part_line]
+    if not HKSTR_PATTERN.search(lines[start_idx]):
+        raise ValueError(f"Line {part_line} is not an HKSTR declaration.")
+
+    end_idx = _find_profile_end(lines, start_idx)
+    if end_idx is None:
+        raise ValueError("Unable to find HKSTO terminator for part.")
+
+    hkldb_line = _first_match(lines, r"HKLDB")
+    hkini_line = _first_match(lines, r"HKINI")
+    hkppp_line = _find_hkppp_after(lines, start_idx) or "HKPPP"
+    hkend_line = "HKEND(0,0,0)"
+
+    part_lines = lines[start_idx : end_idx + 1]
+    min_x, min_y, max_x, max_y = _bounds_for_block(part_lines)
+    dx, dy = min_x, min_y
+    width = (max_x - min_x) + margin
+    height = (max_y - min_y) + margin
+
+    translated_block = [_translate_block_line(line, dx, dy) for line in part_lines]
+    translated_hkini = _translate_hkini(hkini_line, width, height) if hkini_line else None
+
+    output: List[str] = []
+    output.append(f"; Extracted HKSTR part {part_line} from source program")
+    if hkldb_line:
+        output.append(hkldb_line)
+    if translated_hkini:
+        output.append(translated_hkini)
+    else:
+        output.append(f"HKINI(0,{_format_float(width)},{_format_float(height)},0,0,0)")
+    output.append(hkppp_line)
+    output.extend(translated_block)
+    output.append(hkend_line)
+    output.append("M30")
+
+    return PartExtractionResult(lines=output, width=width, height=height)
+
+
 def _index_labels(lines: List[str]) -> dict[int, int]:
     mapping = {}
     for idx, line in enumerate(lines):
@@ -100,6 +145,13 @@ def _extract_profile_line(hkost_line: str) -> int | None:
 def _find_block_end(lines: List[str], start_idx: int) -> int | None:
     for idx in range(start_idx, len(lines)):
         if "HKPED" in lines[idx].upper():
+            return idx
+    return None
+
+
+def _find_profile_end(lines: List[str], start_idx: int) -> int | None:
+    for idx in range(start_idx, len(lines)):
+        if "HKSTO" in lines[idx].upper():
             return idx
     return None
 

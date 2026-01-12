@@ -338,14 +338,7 @@
           (spot) => x >= spot.x && x <= spot.x + spot.width && y >= spot.y && y <= spot.y + spot.height
         );
         if (hit) {
-          const newTab = window.open(hit.url, "_blank");
-          if (newTab) {
-            newTab.opener = null;
-            return;
-          }
-          if (!newTab) {
-            window.location.href = hit.url;
-          }
+          window.location.href = hit.url;
         }
       });
 

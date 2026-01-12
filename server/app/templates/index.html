@@ -281,9 +281,21 @@
 
           ctx.strokeStyle = color;
           ctx.lineWidth = 1.5;
-          ctx.setLineDash([6, 4]);
-          ctx.strokeRect(boxX, boxY, boxW, boxH);
           ctx.setLineDash([]);
+          contours.forEach((contour) => {
+            if (contour.length < 2) return;
+            ctx.beginPath();
+            contour.forEach((point, pointIndex) => {
+              const x = originX + ((part.anchor_x ?? 0) + point[0]) * scale;
+              const y = originY + (sheetHeight - ((part.anchor_y ?? 0) + point[1])) * scale;
+              if (pointIndex === 0) {
+                ctx.moveTo(x, y);
+              } else {
+                ctx.lineTo(x, y);
+              }
+            });
+            ctx.stroke();
+          });
 
           ctx.fillStyle = color;
           ctx.fillText(`P${part.part_number}`, boxX + 4, boxY + 14);

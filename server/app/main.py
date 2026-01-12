@@ -557,7 +557,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               if (!contour.points.length) return;
               ctx.beginPath();
               contour.points.forEach((point, index) => {{
-                const x = (maxX - point[0]) * scale + padding;
+                const x = (point[0] - minX) * scale + padding;
                 const y = (maxY - point[1]) * scale + padding;
                 if (index === 0) {{
                   ctx.moveTo(x, y);
@@ -575,7 +575,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
                 {{ x: 0, y: 0 }}
               );
               const count = contour.points.length || 1;
-              const labelX = (maxX - centroid.x / count) * scale + padding;
+              const labelX = (centroid.x / count - minX) * scale + padding;
               const labelY = (maxY - centroid.y / count) * scale + padding;
               ctx.fillText(contour.label || String(contourIndex + 1), labelX + 4, labelY - 4);
             }});

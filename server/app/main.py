@@ -223,7 +223,7 @@ def _build_validation_payload(result, setup: Optional[dict] = None) -> dict:
         "diagnostics": [DiagnosticModel(**diag.__dict__) for diag in result.diagnostics],
         "summary": ValidationSummary(**result.summary),
         "parsed_lines": _build_display_lines(result),
-        "parts": [_to_part_model(part) for part in result.parts],
+        "parts": [_to_part_model(part, result.raw_lines) for part in result.parts],
         "setup": setup,
     }
 
@@ -233,7 +233,9 @@ def _record_audit(entry: dict) -> None:
         audit_log.write(f"{datetime.now(timezone.utc).isoformat()} {entry}\n")
 
 
-def _to_part_model(part) -> PartSummaryModel:
+def _to_part_model(part, raw_lines: list[str]) -> PartSummaryModel:
+    contour_block = extract_part_block(raw_lines, part.part_line)
+    plot_points = build_part_plot_points(contour_block)
     return PartSummaryModel(
         part_line=part.part_line,
         hkost_line=part.hkost_line,
@@ -243,6 +245,7 @@ def _to_part_model(part) -> PartSummaryModel:
         contours=part.contours,
         anchor_x=part.anchor_x,
         anchor_y=part.anchor_y,
+        plot_points=[[list(point) for point in contour] for contour in plot_points],
     )
 
 

@@ -128,7 +128,14 @@ class StorageManager:
             "description": description,
             "uploadedAt": uploaded_at.isoformat(),
             "summary": {"errors": 0, "warnings": 0, "lines": len(line_buffer)},
-            "parts": [{"hkostLine": part_label, "profileLine": None, "contours": None}],
+            "parts": [
+                {
+                    "partLine": part_label,
+                    "hkostLine": part_label,
+                    "profileLine": None,
+                    "contours": None,
+                }
+            ],
             "setup": {"sheetX": _format_number(width), "sheetY": _format_number(height)},
         }
         meta_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -162,9 +169,13 @@ class StorageManager:
             "parts": [
                 {
                     "partLine": part.part_line,
+                    "hkostLine": part.hkost_line,
+                    "profileLine": part.profile_line,
                     "startLine": part.start_line,
                     "endLine": part.end_line,
                     "contours": part.contours,
+                    "anchorX": part.anchor_x,
+                    "anchorY": part.anchor_y,
                 }
                 for part in validation.parts
             ],

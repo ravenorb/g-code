@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Iterable, List, Tuple
 
 
@@ -10,7 +9,6 @@ HKOST_PATTERN = re.compile(r"HKOST\((?P<params>[^)]*)\)", re.IGNORECASE)
 HKSTR_PATTERN = re.compile(r"HKSTR\((?P<params>[^)]*)\)", re.IGNORECASE)
 HKINI_PATTERN = re.compile(r"HKINI\((?P<params>[^)]*)\)", re.IGNORECASE)
 HKPPP_PATTERN = re.compile(r"HKPPP", re.IGNORECASE)
-HKEND_PATTERN = re.compile(r"HKEND", re.IGNORECASE)
 COORD_PATTERN = re.compile(r"([XY])([-+]?\d*\.?\d+)")
 LINE_LABEL_PATTERN = re.compile(r"^N(\d+)", re.IGNORECASE)
 
@@ -23,7 +21,7 @@ class PartExtractionResult:
 
 
 def extract_part_program(content: str, part_label: int, margin: float = 0.0) -> PartExtractionResult:
-    """Create a standalone program that contains only the requested part placed at origin."""
+    """Create a standalone program that contains only the requested part definition."""
     lines = [line.rstrip() for line in content.splitlines() if line.strip()]
     label_to_index = _index_labels(lines)
     if part_label not in label_to_index:
@@ -42,83 +40,57 @@ def extract_part_program(content: str, part_label: int, margin: float = 0.0) -> 
     if block_end is None:
         raise ValueError("Unable to find HKPED terminator for part.")
 
-    # Collect supporting header lines
-    hkldb_line = _first_match(lines, r"HKLDB")
-    hkini_line = _first_match(lines, r"HKINI")
-    hkppp_line = _find_hkppp_after(lines, hkost_idx) or "HKPPP"
-    hkend_line = "HKEND(0,0,0)"
-
     part_lines = lines[block_start : block_end + 1]
+    trailer_lines, _ = _collect_until_hkppp(lines, hkost_idx)
     min_x, min_y, max_x, max_y = _bounds_for_block(part_lines)
     dx, dy = min_x, min_y
     width = (max_x - min_x) + margin
     height = (max_y - min_y) + margin
 
-    translated_block = [_translate_block_line(line, dx, dy) for line in part_lines]
-    translated_hkost = _translate_hkost(hkost_line, dx, dy)
-    translated_hkini = _translate_hkini(hkini_line, width, height) if hkini_line else None
+    header_lines = _header_lines(lines)
+    footer_lines = _footer_lines(lines, strip_contours=True)
 
     output: List[str] = []
-    output.append(f"; Extracted part {part_label} from source program")
-    if hkldb_line:
-        output.append(hkldb_line)
-    if translated_hkini:
-        output.append(translated_hkini)
-    else:
-        output.append(f"HKINI(0,{_format_float(width)},{_format_float(height)},0,0,0)")
-    output.append(translated_hkost)
-    output.append(hkppp_line)
-    output.extend(translated_block)
-    output.append(hkend_line)
-    output.append("M30")
+    output.extend(header_lines)
+    output.append(hkost_line)
+    output.extend(trailer_lines)
+    output.extend(part_lines)
+    output.extend(footer_lines)
 
     return PartExtractionResult(lines=output, width=width, height=height)
 
 
 def extract_part_profile_program(content: str, part_line: int, margin: float = 0.0) -> PartExtractionResult:
-    """Create a standalone program that contains only the HKSTR -> HKSTO block."""
+    """Create a part profile block that includes HKOST + contours + HKPPP."""
     lines = [line.rstrip() for line in content.splitlines() if line.strip()]
     label_to_index = _index_labels(lines)
-    if part_line in label_to_index:
-        start_idx = label_to_index[part_line]
-    else:
-        if 1 <= part_line <= len(lines):
-            start_idx = part_line - 1
-        else:
-            raise ValueError(f"Part line {part_line} not found.")
-    if not HKSTR_PATTERN.search(lines[start_idx]):
-        raise ValueError(f"Line {part_line} is not an HKSTR declaration.")
+    if part_line not in label_to_index:
+        raise ValueError(f"Part line {part_line} not found.")
 
-    end_idx = _find_profile_end(lines, start_idx)
-    if end_idx is None:
-        raise ValueError("Unable to find HKSTO terminator for part.")
+    hkost_idx = label_to_index[part_line]
+    hkost_line = lines[hkost_idx]
+    profile_line = _extract_profile_line(hkost_line)
+    if profile_line is None:
+        raise ValueError("HKOST line missing profile reference.")
+    if profile_line not in label_to_index:
+        raise ValueError(f"Profile line {profile_line} not found for part {part_line}.")
 
-    hkldb_line = _first_match(lines, r"HKLDB")
-    hkini_line = _first_match(lines, r"HKINI")
-    hkppp_line = _find_hkppp_after(lines, start_idx) or "HKPPP"
-    hkend_line = "HKEND(0,0,0)"
+    block_start = label_to_index[profile_line]
+    block_end = _find_block_end(lines, block_start)
+    if block_end is None:
+        raise ValueError("Unable to find HKPED terminator for part.")
 
-    part_lines = lines[start_idx : end_idx + 1]
+    part_lines = lines[block_start : block_end + 1]
+    trailer_lines, _ = _collect_until_hkppp(lines, hkost_idx)
     min_x, min_y, max_x, max_y = _bounds_for_block(part_lines)
     dx, dy = min_x, min_y
     width = (max_x - min_x) + margin
     height = (max_y - min_y) + margin
 
-    translated_block = [_translate_block_line(line, dx, dy) for line in part_lines]
-    translated_hkini = _translate_hkini(hkini_line, width, height) if hkini_line else None
-
     output: List[str] = []
-    output.append(f"; Extracted HKSTR part {part_line} from source program")
-    if hkldb_line:
-        output.append(hkldb_line)
-    if translated_hkini:
-        output.append(translated_hkini)
-    else:
-        output.append(f"HKINI(0,{_format_float(width)},{_format_float(height)},0,0,0)")
-    output.append(hkppp_line)
-    output.extend(translated_block)
-    output.append(hkend_line)
-    output.append("M30")
+    output.append(hkost_line)
+    output.extend(part_lines)
+    output.extend(trailer_lines)
 
     return PartExtractionResult(lines=output, width=width, height=height)
 
@@ -152,13 +124,6 @@ def _find_block_end(lines: List[str], start_idx: int) -> int | None:
     return None
 
 
-def _find_profile_end(lines: List[str], start_idx: int) -> int | None:
-    for idx in range(start_idx, len(lines)):
-        if "HKSTO" in lines[idx].upper():
-            return idx
-    return None
-
-
 def _first_match(lines: List[str], pattern: str) -> str | None:
     compiled = re.compile(pattern, re.IGNORECASE)
     for line in lines:
@@ -167,11 +132,11 @@ def _first_match(lines: List[str], pattern: str) -> str | None:
     return None
 
 
-def _find_hkppp_after(lines: List[str], start_idx: int) -> str | None:
-    for idx in range(start_idx, min(start_idx + 3, len(lines))):
+def _collect_until_hkppp(lines: List[str], start_idx: int) -> tuple[List[str], int | None]:
+    for idx in range(start_idx + 1, len(lines)):
         if HKPPP_PATTERN.search(lines[idx]):
-            return lines[idx]
-    return _first_match(lines, r"HKPPP")
+            return lines[start_idx + 1 : idx + 1], idx
+    return lines[start_idx + 1 :], None
 
 
 def _bounds_for_block(lines: List[str]) -> Tuple[float, float, float, float]:
@@ -256,6 +221,52 @@ def _translate_hkini(line: str, width: float, height: float) -> str:
         params[2] = _format_float(height)
     updated = ",".join(params)
     return HKINI_PATTERN.sub(f"HKINI({updated})", line)
+
+
+def _header_lines(lines: List[str]) -> List[str]:
+    first_hkost = _find_first_hkost_index(lines)
+    if first_hkost is None:
+        return list(lines)
+    return lines[:first_hkost]
+
+
+def _footer_lines(lines: List[str], strip_contours: bool = False) -> List[str]:
+    last_hkppp = _find_last_hkppp_index(lines)
+    if last_hkppp is None:
+        return []
+    footer = lines[last_hkppp + 1 :]
+    if not strip_contours:
+        return footer
+    return _remove_contour_blocks(footer)
+
+
+def _find_first_hkost_index(lines: List[str]) -> int | None:
+    for idx, line in enumerate(lines):
+        if HKOST_PATTERN.search(line):
+            return idx
+    return None
+
+
+def _find_last_hkppp_index(lines: List[str]) -> int | None:
+    last_idx = None
+    for idx, line in enumerate(lines):
+        if HKPPP_PATTERN.search(line):
+            last_idx = idx
+    return last_idx
+
+
+def _remove_contour_blocks(lines: List[str]) -> List[str]:
+    filtered: List[str] = []
+    in_block = False
+    for line in lines:
+        normalized = line.strip()
+        if HKSTR_PATTERN.search(normalized):
+            in_block = True
+        if not in_block:
+            filtered.append(line)
+        if in_block and "HKPED" in normalized.upper():
+            in_block = False
+    return filtered
 
 
 def _format(raw_value: str, delta: float) -> str:

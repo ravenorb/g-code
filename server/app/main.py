@@ -236,9 +236,13 @@ def _record_audit(entry: dict) -> None:
 def _to_part_model(part) -> PartSummaryModel:
     return PartSummaryModel(
         part_line=part.part_line,
+        hkost_line=part.hkost_line,
+        profile_line=part.profile_line,
         start_line=part.start_line,
         end_line=part.end_line,
         contours=part.contours,
+        anchor_x=part.anchor_x,
+        anchor_y=part.anchor_y,
     )
 
 
@@ -252,17 +256,22 @@ async def part_detail(job_id: str, part_line: int, release_manager: ReleaseManag
     if part is None:
         raise HTTPException(status_code=404, detail="Part not found")
 
-    profile_block = extract_part_block(validation.raw_lines, part.part_line)
-    plot_points = build_part_plot_points(profile_block)
+    contour_block = extract_part_block(validation.raw_lines, part.part_line)
+    plot_points = build_part_plot_points(contour_block)
     content = "\n".join(validation.raw_lines)
-    part_program = extract_part_profile_program(content, part.part_line).lines
+    profile_block = extract_part_profile_program(content, part.part_line).lines
+    part_program = extract_part_program(content, part.part_line).lines
     return PartDetailModel(
         part_line=part.part_line,
+        hkost_line=part.hkost_line,
+        profile_line=part.profile_line,
         start_line=part.start_line,
         end_line=part.end_line,
         contours=part.contours,
+        anchor_x=part.anchor_x,
+        anchor_y=part.anchor_y,
         profile_block=profile_block,
-        plot_points=[list(point) for point in plot_points],
+        plot_points=[[list(point) for point in contour] for contour in plot_points],
         part_program=part_program,
     )
 
@@ -346,8 +355,13 @@ async def part_view(job_id: str, part_line: int) -> HTMLResponse:
               plotInfo.textContent = "No plot data found for this part.";
               return;
             }}
-            const xs = points.map((p) => p[0]);
-            const ys = points.map((p) => p[1]);
+            const flatPoints = points.flat();
+            if (!flatPoints.length) {{
+              plotInfo.textContent = "No plot data found for this part.";
+              return;
+            }}
+            const xs = flatPoints.map((p) => p[0]);
+            const ys = flatPoints.map((p) => p[1]);
             const minX = Math.min(...xs);
             const maxX = Math.max(...xs);
             const minY = Math.min(...ys);
@@ -361,17 +375,20 @@ async def part_view(job_id: str, part_line: int) -> HTMLResponse:
             );
             ctx.strokeStyle = "#2563eb";
             ctx.lineWidth = 2;
-            ctx.beginPath();
-            points.forEach((point, index) => {{
-              const x = (point[0] - minX) * scale + padding;
-              const y = (maxY - point[1]) * scale + padding;
-              if (index === 0) {{
-                ctx.moveTo(x, y);
-              }} else {{
-                ctx.lineTo(x, y);
-              }}
+            points.forEach((contour) => {{
+              if (!contour.length) return;
+              ctx.beginPath();
+              contour.forEach((point, index) => {{
+                const x = (point[0] - minX) * scale + padding;
+                const y = (maxY - point[1]) * scale + padding;
+                if (index === 0) {{
+                  ctx.moveTo(x, y);
+                }} else {{
+                  ctx.lineTo(x, y);
+                }}
+              }});
+              ctx.stroke();
             }});
-            ctx.stroke();
             plotInfo.textContent =
               "Bounds: X " +
               minX +
@@ -392,26 +409,42 @@ async def part_view(job_id: str, part_line: int) -> HTMLResponse:
 
 
 def _build_display_lines(result) -> list[ParsedLineModel]:
-    parts_by_start = {part.start_line: part for part in result.parts}
-    part_ranges = [(part.start_line, part.end_line) for part in result.parts]
+    if not result.parts:
+        return [
+            ParsedLineModel(
+                line_number=line.line_number,
+                raw=line.raw,
+                command=line.command,
+                description=line.description,
+                arguments=line.arguments,
+                fields=[
+                    ParsedFieldModel(name="command", value=line.command),
+                    *[ParsedFieldModel(name=name, value=value) for name, value in line.params.items()],
+                ],
+            )
+            for line in result.parsed
+        ]
 
-    def is_within_part(line_number: int) -> bool:
-        return any(start <= line_number <= end for start, end in part_ranges)
+    parts_by_hkost = {part.hkost_line: part for part in result.parts}
+    first_hkost = min(parts_by_hkost.keys())
+    last_hkppp = _find_last_hkppp_line(result.raw_lines, first_hkost)
+    cutoff_end = last_hkppp if last_hkppp is not None else first_hkost
 
     display_lines: list[ParsedLineModel] = []
     for line in result.parsed:
-        if line.line_number in parts_by_start:
-            part = parts_by_start[line.line_number]
+        if line.line_number in parts_by_hkost:
+            part = parts_by_hkost[line.line_number]
             display_lines.append(
                 ParsedLineModel(
                     line_number=line.line_number,
                     raw=f"N{part.part_line} PART",
                     command="PART",
-                    description="Part profile block",
+                    description="Part definition",
                     arguments=[],
                     fields=[
                         ParsedFieldModel(name="command", value="PART"),
                         ParsedFieldModel(name="part_line", value=part.part_line),
+                        ParsedFieldModel(name="profile_line", value=part.profile_line),
                         ParsedFieldModel(name="start_line", value=part.start_line),
                         ParsedFieldModel(name="end_line", value=part.end_line),
                     ],
@@ -419,7 +452,7 @@ def _build_display_lines(result) -> list[ParsedLineModel]:
             )
             continue
 
-        if is_within_part(line.line_number):
+        if first_hkost <= line.line_number <= cutoff_end:
             continue
 
         display_lines.append(
@@ -437,3 +470,13 @@ def _build_display_lines(result) -> list[ParsedLineModel]:
         )
 
     return display_lines
+
+
+def _find_last_hkppp_line(lines: list[str], start_line: int) -> int | None:
+    last = None
+    for idx, line in enumerate(lines, start=1):
+        if idx < start_line:
+            continue
+        if "HKPPP" in line.upper():
+            last = idx
+    return last

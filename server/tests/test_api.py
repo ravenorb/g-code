@@ -54,15 +54,25 @@ async def test_release_rejects_invalid_job(client):
 @pytest.mark.anyio
 async def test_upload_reports_part_and_contour_counts(client):
     payload = (
+        "N10000 HKOST(0.0,0.0,0.0,10001,1,0,0,0)\n"
+        "HKPPP\n"
+        "N20000 HKOST(1.0,1.0,0.0,20001,1,0,0,0)\n"
+        "HKPPP\n"
         "N10001 HKSTR(1,1,0,0,0,0,0,0)\n"
         "HKCUT(0,0,0)\n"
         "G1 X0 Y0\n"
         "G1 X1 Y1\n"
         "HKSTO(0,0,0)\n"
+        "N10002 HKSTR(1,1,0,0,0,0,0,0)\n"
+        "HKCUT(0,0,0)\n"
+        "G1 X0 Y0\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
         "N20001 HKSTR(1,1,0,0,0,0,0,0)\n"
         "HKCUT(0,0,0)\n"
         "G1 X0 Y0\n"
         "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
     ).encode()
 
     response = await client.post("/upload", files={"file": ("job.mpf", io.BytesIO(payload), "text/plain")})
@@ -73,7 +83,7 @@ async def test_upload_reports_part_and_contour_counts(client):
     contours = [part["contours"] for part in body["parts"]]
     part_lines = [part["part_line"] for part in body["parts"]]
     assert contours == [2, 1]
-    assert part_lines == [10001, 20001]
+    assert part_lines == [10000, 20000]
 
 
 @pytest.mark.anyio
@@ -119,6 +129,8 @@ async def test_upload_persists_metadata_and_extracts_part(client):
     extracted_text = Path(extract_body["stored_path"]).read_text()
     assert "HKINI(" in extracted_text
     assert "M30" in extracted_text
+    assert "HKPPP" in extracted_text
+    assert "HKPED" in extracted_text
     assert "HKSTR" in extracted_text
     assert extract_body["width"] > 0
     assert extract_body["height"] > 0

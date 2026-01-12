@@ -78,6 +78,12 @@
       .part-chip strong {
         font-size: 1rem;
       }
+      .sheet-canvas {
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #ffffff;
+        margin-top: 0.5rem;
+      }
     </style>
   </head>
   <body>
@@ -127,6 +133,10 @@
       <h2>Parts</h2>
       <p id="parts-info" class="hidden"></p>
       <div id="parts-row" class="parts-row"></div>
+
+      <h2>Sheet Layout</h2>
+      <p id="sheet-info" class="hidden"></p>
+      <canvas id="sheet-canvas" class="sheet-canvas" width="720" height="420"></canvas>
     </div>
 
     <script>
@@ -139,6 +149,8 @@
       const parsedBody = document.querySelector("#parsed-table tbody");
       const partsRow = document.getElementById("parts-row");
       const partsInfo = document.getElementById("parts-info");
+      const sheetInfo = document.getElementById("sheet-info");
+      const sheetCanvas = document.getElementById("sheet-canvas");
       let lastJobId = null;
 
       form.addEventListener("submit", async (event) => {
@@ -176,6 +188,7 @@
           renderDiagnostics(data.diagnostics);
           renderParsed(data.parsed_lines);
           renderParts(data.parts, data.job_id);
+          renderSheet(data.setup, data.parts);
           lastJobId = data.job_id;
 
           statusEl.textContent = "Validation completed.";
@@ -257,6 +270,49 @@
           `;
           partsRow.appendChild(link);
         });
+      }
+
+      function renderSheet(setup, parts) {
+        const ctx = sheetCanvas.getContext("2d");
+        ctx.clearRect(0, 0, sheetCanvas.width, sheetCanvas.height);
+        sheetInfo.classList.add("hidden");
+
+        if (!setup || !setup.sheetX || !setup.sheetY) {
+          sheetInfo.textContent = "No HKINI sheet size found for this file.";
+          sheetInfo.classList.remove("hidden");
+          return;
+        }
+
+        const padding = 24;
+        const sheetWidth = setup.sheetX;
+        const sheetHeight = setup.sheetY;
+        const scale = Math.min(
+          (sheetCanvas.width - padding * 2) / sheetWidth,
+          (sheetCanvas.height - padding * 2) / sheetHeight
+        );
+        const originX = padding;
+        const originY = padding;
+        const drawWidth = sheetWidth * scale;
+        const drawHeight = sheetHeight * scale;
+
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(originX, originY, drawWidth, drawHeight);
+
+        ctx.fillStyle = "#2563eb";
+        ctx.font = "12px Arial";
+        parts.forEach((part, index) => {
+          if (part.anchor_x == null || part.anchor_y == null) return;
+          const x = originX + part.anchor_x * scale;
+          const y = originY + (sheetHeight - part.anchor_y) * scale;
+          ctx.beginPath();
+          ctx.arc(x, y, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillText(`N${part.part_line}`, x + 6, y - 6);
+        });
+
+        sheetInfo.textContent = `Sheet: ${sheetWidth} × ${sheetHeight}`;
+        sheetInfo.classList.remove("hidden");
       }
     </script>
   </body>

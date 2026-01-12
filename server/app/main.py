@@ -605,8 +605,8 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             }});
             plotInfo.textContent =
               workpieceWidth && workpieceHeight
-                ? `Workpiece: X ${workpieceWidth}, Y ${workpieceHeight}`
-                : `Distance: X ${rangeX}, Y ${rangeY}`;
+                ? `Workpiece: X ${{workpieceWidth}}, Y ${{workpieceHeight}}`
+                : `Distance: X ${{rangeX}}, Y ${{rangeY}}`;
           }}
 
           function syncInputsFromUrl() {{

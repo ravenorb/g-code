@@ -44,13 +44,13 @@ class PartSummaryModel(BaseModel):
     contours: int = Field(description="Number of HKSTR contour blocks between HKOST and HKPED.")
     anchor_x: Optional[float] = Field(default=None, description="HKOST anchor X coordinate.")
     anchor_y: Optional[float] = Field(default=None, description="HKOST anchor Y coordinate.")
+    plot_points: List[List[List[float]]] = Field(
+        default_factory=list, description="Plot points extracted from the profile block."
+    )
 
 
 class PartDetailModel(PartSummaryModel):
     profile_block: List[str] = Field(default_factory=list, description="Profile block lines for the selected part.")
-    plot_points: List[List[List[float]]] = Field(
-        default_factory=list, description="Plot points extracted from the profile block."
-    )
     part_program: List[str] = Field(default_factory=list, description="Standalone program to cut just this part.")
 
 

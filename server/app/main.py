@@ -542,6 +542,13 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             const maxX = Math.max(...xs);
             const minY = Math.min(...ys);
             const maxY = Math.max(...ys);
+            const flipPlot180 = true;
+            const transformPoint = (point) => {{
+              if (!flipPlot180) {{
+                return point;
+              }}
+              return [minX + maxX - point[0], minY + maxY - point[1]];
+            }};
             const padding = 24;
             const rangeX = maxX - minX || 1;
             const rangeY = maxY - minY || 1;
@@ -557,8 +564,9 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               if (!contour.points.length) return;
               ctx.beginPath();
               contour.points.forEach((point, index) => {{
-                const x = (point[0] - minX) * scale + padding;
-                const y = (maxY - point[1]) * scale + padding;
+                const transformed = transformPoint(point);
+                const x = (transformed[0] - minX) * scale + padding;
+                const y = (maxY - transformed[1]) * scale + padding;
                 if (index === 0) {{
                   ctx.moveTo(x, y);
                 }} else {{
@@ -575,8 +583,9 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
                 {{ x: 0, y: 0 }}
               );
               const count = contour.points.length || 1;
-              const labelX = (centroid.x / count - minX) * scale + padding;
-              const labelY = (maxY - centroid.y / count) * scale + padding;
+              const transformedLabel = transformPoint([centroid.x / count, centroid.y / count]);
+              const labelX = (transformedLabel[0] - minX) * scale + padding;
+              const labelY = (maxY - transformedLabel[1]) * scale + padding;
               ctx.fillText(contour.label || String(contourIndex + 1), labelX + 4, labelY - 4);
             }});
             plotInfo.textContent =

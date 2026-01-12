@@ -372,7 +372,15 @@ async def part_view(job_id: str, part_line: int) -> HTMLResponse:
               }}
             }});
             ctx.stroke();
-            plotInfo.textContent = `Bounds: X ${minX}→${maxX}, Y ${minY}→${maxY}`;
+            plotInfo.textContent =
+              "Bounds: X " +
+              minX +
+              "→" +
+              maxX +
+              ", Y " +
+              minY +
+              "→" +
+              maxY;
           }}
 
           loadPart();

@@ -104,9 +104,9 @@
       <h2>Original File Code</h2>
       <pre id="raw-code" class="code-box"></pre>
 
-      <h2>Sheet Layout</h2>
+      <h2 id="sheet-layout">Sheet Layout</h2>
       <p id="sheet-info" class="hidden"></p>
-      <canvas id="sheet-canvas" class="sheet-canvas" width="720" height="420"></canvas>
+      <canvas id="sheet-canvas" class="sheet-canvas" width="1440" height="840"></canvas>
     </div>
 
     <script>
@@ -301,6 +301,34 @@
         sheetInfo.classList.remove("hidden");
       }
 
+      async function loadJob(jobId) {
+        statusEl.classList.remove("hidden");
+        statusEl.textContent = "Loading saved analysis...";
+        resultsCard.classList.add("hidden");
+        diagnosticsBody.innerHTML = "";
+        rawCode.textContent = "";
+        sheetHotspots = [];
+        lastJobId = jobId;
+
+        try {
+          const response = await fetch(`/jobs/${jobId}/analysis`);
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(detail || "Unable to load job analysis");
+          }
+          const data = await response.json();
+          lastJob = data;
+          renderSummary(data);
+          renderDiagnostics(data.diagnostics);
+          renderRawCode(data.raw_program || []);
+          renderSheet(data.setup, data.parts);
+          statusEl.textContent = "Saved analysis loaded.";
+          resultsCard.classList.remove("hidden");
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+        }
+      }
+
       sheetCanvas.addEventListener("click", (event) => {
         if (!sheetHotspots.length) return;
         const rect = sheetCanvas.getBoundingClientRect();
@@ -310,12 +338,22 @@
           (spot) => x >= spot.x && x <= spot.x + spot.width && y >= spot.y && y <= spot.y + spot.height
         );
         if (hit) {
-          const newTab = window.open(hit.url, "_blank", "noopener");
+          const newTab = window.open(hit.url, "_blank");
+          if (newTab) {
+            newTab.opener = null;
+            return;
+          }
           if (!newTab) {
             window.location.href = hit.url;
           }
         }
       });
+
+      const params = new URLSearchParams(window.location.search);
+      const jobId = params.get("job_id");
+      if (jobId) {
+        loadJob(jobId);
+      }
     </script>
   </body>
 </html>

@@ -150,6 +150,19 @@ async def list_jobs(storage_manager: StorageManager = Depends(get_storage_manage
     return [JobListing(**job) for job in jobs]
 
 
+@app.get("/jobs/{job_id}/analysis", response_model=ValidationResponse)
+async def job_analysis(
+    job_id: str,
+    release_manager: ReleaseManager = Depends(get_release_manager),
+) -> ValidationResponse:
+    validation = release_manager.get_validation(job_id)
+    if validation is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    setup = extract_sheet_setup(validation.raw_lines)
+    payload = _build_validation_payload(validation, setup=setup)
+    return ValidationResponse(**payload)
+
+
 @app.post("/extract", response_model=ExtractResponse)
 async def extract_part(
     request: ExtractRequest,
@@ -382,11 +395,15 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
         </style>
       </head>
       <body>
-        <a href="/">← Back to upload</a>
+        <nav class="row">
+          <a href="/?job_id={job_id}">← Return to sheet</a>
+          <span>|</span>
+          <a href="/">Upload new file</a>
+        </nav>
         <h1>Part {part_number}</h1>
         <div class="card">
           <h2>Geometry</h2>
-          <canvas id="plot" width="720" height="420"></canvas>
+          <canvas id="plot" width="1440" height="840"></canvas>
           <p id="plot-info"></p>
         </div>
         <div class="card">

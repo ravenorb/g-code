@@ -61,6 +61,8 @@ def extract_part_program(
     dx, dy = min_x, min_y
     width = (max_x - min_x) + margin
     height = (max_y - min_y) + margin
+    hkini_width = width + 1.0
+    hkini_height = height + 1.0
 
     header_lines = _header_lines(lines)
     footer_lines = _footer_lines(lines, strip_contours=True)
@@ -71,6 +73,7 @@ def extract_part_program(
     output.extend(trailer_lines)
     output.extend(part_lines)
     output.extend(footer_lines)
+    output = [_translate_hkini(line, hkini_width, hkini_height) for line in output]
 
     return PartExtractionResult(lines=output, width=width, height=height)
 

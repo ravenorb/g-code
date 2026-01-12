@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -267,6 +267,14 @@ def _to_part_model(part, raw_lines: list[str]) -> PartSummaryModel:
     )
 
 
+def _translate_contour_points(
+    points: List[tuple[float, float]],
+    offset_x: float,
+    offset_y: float,
+) -> List[List[float]]:
+    return [[point[0] + offset_x, point[1] + offset_y] for point in points]
+
+
 @app.get("/jobs/{job_id}/parts/{part_number}", response_model=PartDetailModel)
 async def part_detail(
     job_id: str,
@@ -306,10 +314,16 @@ async def part_detail(
         extra_points = build_part_plot_points(block)
         if not extra_points:
             continue
+        target_anchor_x = part.anchor_x or 0.0
+        target_anchor_y = part.anchor_y or 0.0
+        source_anchor_x = source_part.anchor_x if source_part and source_part.anchor_x is not None else 0.0
+        source_anchor_y = source_part.anchor_y if source_part and source_part.anchor_y is not None else 0.0
+        offset_x = source_anchor_x - target_anchor_x
+        offset_y = source_anchor_y - target_anchor_y
         plot_contours.append(
             ContourPlotModel(
                 label=f"{part_number_ref}.{contour_index}",
-                points=[[float(point[0]), float(point[1])] for point in extra_points[0]],
+                points=_translate_contour_points(extra_points[0], offset_x, offset_y),
             )
         )
     content = "\n".join(validation.raw_lines)

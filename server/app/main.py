@@ -542,7 +542,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             const maxX = Math.max(...xs);
             const minY = Math.min(...ys);
             const maxY = Math.max(...ys);
-            const flipPlot180 = false;
+            const flipPlot180 = true;
             const transformPoint = (point) => {{
               if (!flipPlot180) {{
                 return point;

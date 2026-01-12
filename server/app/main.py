@@ -323,12 +323,15 @@ async def part_detail(
             )
         )
     content = "\n".join(validation.raw_lines)
-    profile_block = extract_part_profile_program(content, part.part_line).lines
-    part_program_result = extract_part_program(
-        content,
-        part.part_line,
-        extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
-    )
+    try:
+        profile_block = extract_part_profile_program(content, part.part_line).lines
+        part_program_result = extract_part_program(
+            content,
+            part.part_line,
+            extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return PartDetailModel(
         part_number=part.part_number,
         part_line=part.part_line,
@@ -366,11 +369,14 @@ async def part_program_download(
 
     extra_contour_refs = _parse_extra_contours(extra_contours, validation.parts)
     content = "\n".join(validation.raw_lines)
-    part_program = extract_part_program(
-        content,
-        part.part_line,
-        extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
-    ).lines
+    try:
+        part_program = extract_part_program(
+            content,
+            part.part_line,
+            extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
+        ).lines
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     meta = storage_manager.load_job(job_id) or {}
     original_name = meta.get("originalFile", f"{job_id}.mpf")
     filename = _build_part_filename(original_name, part_number)

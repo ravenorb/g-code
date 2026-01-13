@@ -121,6 +121,10 @@ class ExtractResponse(BaseModel):
     filename: str
 
 
+class CutOrderRequest(BaseModel):
+    order: List[int] = Field(default_factory=list, description="Ordered list of part numbers.")
+
+
 class JobListing(BaseModel):
     jobId: str
     originalFile: str

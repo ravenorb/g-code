@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, List, Tuple
 
-from .parser import extract_part_contour_block
+from .parser import PartSummary, extract_part_block, extract_part_contour_block
 
 
 HKOST_PATTERN = re.compile(r"HKOST\((?P<params>[^)]*)\)", re.IGNORECASE)
@@ -110,6 +110,48 @@ def extract_part_profile_program(content: str, part_line: int, margin: float = 0
     output.extend(trailer_lines)
 
     return PartExtractionResult(lines=output, width=width, height=height)
+
+
+def build_reordered_program(lines: List[str], parts: List[PartSummary], order: List[int]) -> List[str]:
+    if not parts:
+        return list(lines)
+
+    parts_by_number = {part.part_number: part for part in parts}
+    requested = [part_number for part_number in order if part_number in parts_by_number]
+    missing = [part.part_number for part in parts if part.part_number not in requested]
+    ordered_parts = requested + missing
+
+    output: List[str] = []
+    output.extend(_header_lines(lines))
+
+    for part_number in ordered_parts:
+        part = parts_by_number[part_number]
+        hkost_index = part.hkost_line - 1
+        if hkost_index < 0 or hkost_index >= len(lines):
+            continue
+        output.append(lines[hkost_index])
+        trailer_lines, _ = _collect_until_hkppp(lines, hkost_index)
+        output.extend(trailer_lines)
+
+    footer_lines = _footer_lines(lines, strip_contours=True)
+    output.extend(footer_lines)
+
+    appended_any = False
+    for part_number in ordered_parts:
+        part = parts_by_number[part_number]
+        contour_block = extract_part_block(lines, part.part_line)
+        if not contour_block:
+            continue
+        if output and output[-1].strip():
+            output.append("")
+        output.extend(contour_block)
+        output.append("")
+        appended_any = True
+
+    if appended_any and output and output[-1] == "":
+        output.pop()
+
+    return output
 
 
 def _index_labels(lines: List[str]) -> dict[int, int]:

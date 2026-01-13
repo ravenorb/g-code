@@ -93,6 +93,28 @@
         color: #475569;
         margin-top: 0.5rem;
       }
+      .order-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 0.75rem;
+      }
+      .action-button {
+        padding: 0.4rem 0.85rem;
+        border-radius: 6px;
+        border: 1px solid #1e293b;
+        background: #1e293b;
+        color: #ffffff;
+        cursor: pointer;
+      }
+      .action-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+      .order-status {
+        font-size: 0.9rem;
+        color: #475569;
+      }
     </style>
   </head>
   <body>
@@ -136,6 +158,10 @@
         yet change the generated program output.
       </p>
       <ol id="parts-order" class="order-list"></ol>
+      <div class="order-actions">
+        <button id="download-cut-order" class="action-button" type="button" disabled>Create MPF from Cut Order</button>
+        <span id="cut-order-status" class="order-status"></span>
+      </div>
 
       <h2>Original File Code</h2>
       <pre id="raw-code" class="code-box"></pre>
@@ -152,6 +178,8 @@
       const sheetInfo = document.getElementById("sheet-info");
       const sheetCanvas = document.getElementById("sheet-canvas");
       const partsOrderList = document.getElementById("parts-order");
+      const downloadCutOrderButton = document.getElementById("download-cut-order");
+      const cutOrderStatus = document.getElementById("cut-order-status");
       let lastJobId = null;
       let lastJob = null;
       let sheetHotspots = [];
@@ -168,6 +196,8 @@
         rawCode.textContent = "";
         sheetHotspots = [];
         lastJobId = null;
+        cutOrderStatus.textContent = "";
+        downloadCutOrderButton.disabled = true;
 
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
@@ -192,6 +222,7 @@
           renderRawCode(data.raw_program || []);
           renderSheet(data.setup, data.parts);
           renderPartsOrder(data.parts || []);
+          cutOrderStatus.textContent = "";
 
           statusEl.textContent = "Validation completed.";
           resultsCard.classList.remove("hidden");
@@ -394,6 +425,7 @@
 
       function renderPartsOrder(parts) {
         partsOrderList.innerHTML = "";
+        downloadCutOrderButton.disabled = !parts.length;
         if (!parts.length) {
           partsOrderList.innerHTML = "<li>No parts available.</li>";
           return;
@@ -417,6 +449,53 @@
           saveStoredOrder(newOrder);
         });
       }
+
+      function getCurrentOrder() {
+        return Array.from(partsOrderList.querySelectorAll(".order-item")).map((item) =>
+          Number(item.dataset.partNumber)
+        );
+      }
+
+      function getFilenameFromDisposition(disposition, fallbackName) {
+        if (!disposition) return fallbackName;
+        const match = disposition.match(/filename="([^"]+)"/i);
+        return match ? match[1] : fallbackName;
+      }
+
+      downloadCutOrderButton.addEventListener("click", async () => {
+        if (!lastJobId) return;
+        const order = getCurrentOrder();
+        if (!order.length) return;
+        downloadCutOrderButton.disabled = true;
+        cutOrderStatus.textContent = "Building reordered MPF...";
+        try {
+          const response = await fetch(`/jobs/${lastJobId}/cut-order/program`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ order }),
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(detail || "Unable to build reordered MPF.");
+          }
+          const blob = await response.blob();
+          const fallbackName = `cut-order-${lastJobId}.mpf`;
+          const filename = getFilenameFromDisposition(response.headers.get("Content-Disposition"), fallbackName);
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(url);
+          cutOrderStatus.textContent = `Downloaded ${filename}.`;
+        } catch (err) {
+          cutOrderStatus.textContent = `Error: ${err.message}`;
+        } finally {
+          downloadCutOrderButton.disabled = !partsOrderList.querySelector(".order-item");
+        }
+      });
 
       function enableDragSorting(listEl, onUpdate) {
         let dragging = null;
@@ -462,6 +541,8 @@
         rawCode.textContent = "";
         sheetHotspots = [];
         lastJobId = jobId;
+        cutOrderStatus.textContent = "";
+        downloadCutOrderButton.disabled = true;
 
         try {
           const response = await fetch(`/jobs/${jobId}/analysis`);

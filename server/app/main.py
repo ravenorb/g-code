@@ -12,9 +12,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from .config import DEFAULT_CONFIG, ServiceConfig
 from .diagnostics import ValidationService, hash_payload
-from .extract import extract_part_profile_program, extract_part_program
+from .extract import build_reordered_program, extract_part_profile_program, extract_part_program
 from .models import (
     ContourPlotModel,
+    CutOrderRequest,
     DiagnosticModel,
     ExtractRequest,
     ExtractResponse,
@@ -377,6 +378,29 @@ async def part_program_download(
     original_name = meta.get("originalFile", f"{job_id}.mpf")
     filename = _build_part_filename(original_name, part_number)
     payload = "\n".join(part_program) + "\n"
+    return Response(
+        content=payload,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/jobs/{job_id}/cut-order/program")
+async def cut_order_program(
+    job_id: str,
+    request: CutOrderRequest,
+    release_manager: ReleaseManager = Depends(get_release_manager),
+    storage_manager: StorageManager = Depends(get_storage_manager),
+) -> Response:
+    validation = release_manager.get_validation(job_id)
+    if validation is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    reordered_lines = build_reordered_program(validation.raw_lines, validation.parts, request.order)
+    meta = storage_manager.load_job(job_id) or {}
+    original_name = meta.get("originalFile", f"{job_id}.mpf")
+    filename = _build_cut_order_filename(original_name)
+    payload = "\n".join(reordered_lines) + "\n"
     return Response(
         content=payload,
         media_type="text/plain",
@@ -771,6 +795,13 @@ def _build_part_filename(original_name: str, part_number: int) -> str:
     base = Path(original_name).stem or "part"
     suffix = Path(original_name).suffix
     candidate = f"{base}_p{part_number}{suffix}"
+    return re.sub(r"[^A-Za-z0-9._-]", "_", candidate)
+
+
+def _build_cut_order_filename(original_name: str) -> str:
+    base = Path(original_name).stem or "cut-order"
+    suffix = Path(original_name).suffix or ".mpf"
+    candidate = f"{base}_cut_order{suffix}"
     return re.sub(r"[^A-Za-z0-9._-]", "_", candidate)
 
 

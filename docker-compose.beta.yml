@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  hk-parser-beta:
+    build: .
+    image: hk-parser-service:beta
+    ports:
+      - "8000:80"
+    environment:
+      - LOG_LEVEL=info
+      - STORAGE_ROOT=/app/storage
+    volumes:
+      - ./logs:/app/logs
+      - ./storage:/app/storage

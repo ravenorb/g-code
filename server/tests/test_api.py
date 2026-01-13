@@ -134,3 +134,30 @@ async def test_upload_persists_metadata_and_extracts_part(client):
     assert "HKSTR" in extracted_text
     assert extract_body["width"] > 0
     assert extract_body["height"] > 0
+
+
+@pytest.mark.anyio
+async def test_cut_order_program_renumbers_parts(client):
+    payload = (
+        "N10000 HKOST(0.0,0.0,0.0,10001,1,0,0,0)\n"
+        "HKPPP\n"
+        "N20000 HKOST(1.0,1.0,0.0,20001,1,0,0,0)\n"
+        "HKPPP\n"
+        "N10001 HKSTR(1,1,1,1,0,0,0,0)\n"
+        "HKPED(0,0,0)\n"
+        "N20001 HKSTR(1,1,2,2,0,0,0,0)\n"
+        "HKPED(0,0,0)\n"
+    ).encode()
+
+    response = await client.post("/upload", files={"file": ("job.mpf", io.BytesIO(payload), "text/plain")})
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    reorder_resp = await client.post(f"/jobs/{job_id}/cut-order/program", json={"order": [2, 1]})
+    assert reorder_resp.status_code == 200
+    text = reorder_resp.text
+
+    assert "N10000 HKOST(1.0,1.0,0.0,10001,1,0,0,0)" in text
+    assert "N20000 HKOST(0.0,0.0,0.0,20001,1,0,0,0)" in text
+    assert "N10001 HKSTR(1,1,2,2,0,0,0,0)" in text
+    assert "N20001 HKSTR(1,1,1,1,0,0,0,0)" in text

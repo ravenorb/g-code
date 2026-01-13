@@ -11,24 +11,20 @@ command -v docker >/dev/null || { echo "docker not found"; exit 1; }
 
 echo "=== Reloading g-code repo ==="
 
-echo "[1/7] Stopping containers"
-docker compose -f "$REPO_DIR/docker-compose.yml" down || true
-docker compose -f "$REPO_DIR/docker-compose.beta.yml" down || true
+echo "[1/6] Stopping containers"
+docker compose -f "$REPO_DIR/docker-compose.yml" -f "$REPO_DIR/docker-compose.beta.yml" down || true
 
-echo "[2/7] Changing to base directory"
+echo "[2/6] Changing to base directory"
 cd "$BASE_DIR"
 
-echo "[3/7] Removing old repo"
+echo "[3/6] Removing old repo"
 rm -rf "$REPO_DIR"
 
-echo "[4/7] Cloning fresh repo"
+echo "[4/6] Cloning fresh repo"
 git clone "$REPO_URL" "$REPO_DIR"
 
-echo "[5/7] Changing directory"
+echo "[5/6] Changing directory"
 cd "$REPO_DIR"
 
-echo "[6/7] Building and starting main containers"
-docker compose up --build -d
-
-echo "[7/7] Building and starting beta containers"
-docker compose -f docker-compose.beta.yml up --build -d
+echo "[6/6] Building and starting main + beta containers"
+docker compose -f docker-compose.yml -f docker-compose.beta.yml up --build -d

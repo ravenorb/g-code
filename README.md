@@ -26,6 +26,13 @@ uvicorn server.app.main:app --reload
 docker-compose up --build
 ```
 
+To run a beta instance alongside the main container (for example, on port 8000), use the beta compose file with a
+different project name:
+
+```bash
+docker-compose -p hk-parser-beta -f docker-compose.beta.yml up --build
+```
+
 You can override the storage location (for example, to point at an NAS mount) by setting `STORAGE_ROOT`:
 
 ```bash
@@ -33,6 +40,9 @@ STORAGE_ROOT=/mnt/nas/gcode \
   docker-compose up --build
 ```
 
-With the stack running, open http://localhost:8000 to access the upload UI. Upload a file, add a description, review the parsed diagnostics/parts, and click “Extract” on any part to generate a standalone file at the storage root.
+With the stack running, open http://localhost to access the upload UI (the default compose file maps port 80). Upload a
+file, add a description, review the parsed diagnostics/parts, and click “Extract” on any part to generate a
+standalone file at the storage root.
 
-The API will be available on [http://localhost:8000](http://localhost:8000).
+The API will be available on [http://localhost](http://localhost). If you run the app directly with Uvicorn, the
+default port is 8000.

@@ -431,6 +431,31 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             margin-bottom: 1.5rem;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
           }}
+          .order-list {{
+            list-style: decimal;
+            padding-left: 1.5rem;
+            margin: 0.75rem 0 0;
+          }}
+          .order-item {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background: #ffffff;
+            margin-bottom: 0.5rem;
+            cursor: grab;
+          }}
+          .order-item.dragging {{
+            opacity: 0.6;
+            background: #f1f5f9;
+          }}
+          .order-hint {{
+            font-size: 0.9rem;
+            color: #475569;
+            margin-top: 0.5rem;
+          }}
           canvas {{
             border: 1px solid #cbd5e1;
             border-radius: 6px;
@@ -472,6 +497,14 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           <p id="contour-status"></p>
         </div>
         <div class="card">
+          <h2>Contour Cut Order (Beta)</h2>
+          <p class="order-hint">
+            Drag contours to reorder the cut sequence. The order is saved locally in your browser for this part and
+            does not yet change the generated program output.
+          </p>
+          <ol id="contour-order" class="order-list"></ol>
+        </div>
+        <div class="card">
           <h2>Part Profile Code</h2>
           <pre id="profile-code"></pre>
         </div>
@@ -491,6 +524,8 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           const contourInputs = Array.from(document.querySelectorAll(".extra-contour"));
           const applyContours = document.getElementById("apply-contours");
           const downloadLink = document.getElementById("download-program");
+          const contourOrderList = document.getElementById("contour-order");
+          const contourOrderKey = "contourOrder:{job_id}:{part_number}";
 
           function getExtraContours() {{
             return contourInputs.map((input) => input.value.trim()).filter(Boolean);
@@ -508,6 +543,100 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             downloadLink.href = `/jobs/{job_id}/parts/{part_number}/program${{queryString}}`;
           }}
 
+          function normalizeContours(rawContours) {{
+            return Array.isArray(rawContours[0]?.points)
+              ? rawContours
+              : rawContours.map((points, index) => ({{ label: String(index + 1), points }}));
+          }}
+
+          function readContourOrder(contours) {{
+            const raw = localStorage.getItem(contourOrderKey);
+            if (!raw) return contours.map((contour) => contour.label);
+            try {{
+              const parsed = JSON.parse(raw);
+              if (!Array.isArray(parsed)) return contours.map((contour) => contour.label);
+              const labels = new Set(contours.map((contour) => contour.label));
+              const ordered = parsed.filter((label) => labels.has(label));
+              const missing = contours
+                .map((contour) => contour.label)
+                .filter((label) => !ordered.includes(label));
+              return [...ordered, ...missing];
+            }} catch (err) {{
+              return contours.map((contour) => contour.label);
+            }}
+          }}
+
+          function saveContourOrder(order) {{
+            localStorage.setItem(contourOrderKey, JSON.stringify(order));
+          }}
+
+          function applyContourOrder(contours) {{
+            const order = readContourOrder(contours);
+            const contourMap = new Map(contours.map((contour) => [contour.label, contour]));
+            return order.map((label) => contourMap.get(label)).filter(Boolean);
+          }}
+
+          function renderContourOrder(contours, onUpdate) {{
+            contourOrderList.innerHTML = "";
+            if (!contours.length) {{
+              contourOrderList.innerHTML = "<li>No contours available.</li>";
+              return;
+            }}
+            contours.forEach((contour) => {{
+              const item = document.createElement("li");
+              item.className = "order-item";
+              item.setAttribute("draggable", "true");
+              item.dataset.label = contour.label;
+              item.textContent = `Contour ${{contour.label}}`;
+              contourOrderList.appendChild(item);
+            }});
+            enableDragSorting(contourOrderList, () => {{
+              const newOrder = Array.from(contourOrderList.querySelectorAll(".order-item")).map(
+                (item) => item.dataset.label
+              );
+              saveContourOrder(newOrder);
+              if (typeof onUpdate === "function") {{
+                onUpdate(newOrder);
+              }}
+            }});
+          }}
+
+          function enableDragSorting(listEl, onUpdate) {{
+            let dragging = null;
+            listEl.addEventListener("dragstart", (event) => {{
+              const item = event.target.closest(".order-item");
+              if (!item) return;
+              dragging = item;
+              item.classList.add("dragging");
+              event.dataTransfer.effectAllowed = "move";
+            }});
+            listEl.addEventListener("dragend", () => {{
+              if (dragging) {{
+                dragging.classList.remove("dragging");
+                dragging = null;
+              }}
+            }});
+            listEl.addEventListener("dragover", (event) => {{
+              event.preventDefault();
+              if (!dragging) return;
+              const target = event.target.closest(".order-item");
+              if (!target || target === dragging) return;
+              const rect = target.getBoundingClientRect();
+              const shouldInsertAfter = event.clientY - rect.top > rect.height / 2;
+              if (shouldInsertAfter) {{
+                target.after(dragging);
+              }} else {{
+                target.before(dragging);
+              }}
+            }});
+            listEl.addEventListener("drop", (event) => {{
+              event.preventDefault();
+              if (typeof onUpdate === "function") {{
+                onUpdate();
+              }}
+            }});
+          }}
+
           async function loadPart(entries = getExtraContours()) {{
             const queryString = buildQueryString(entries);
             updateDownloadLink(entries);
@@ -519,7 +648,14 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             const data = await resp.json();
             profileCode.textContent = (data.profile_block || []).join("\\n");
             partProgram.textContent = (data.part_program || []).join("\\n");
-            renderPlot(data.plot_contours || data.plot_points || []);
+            const normalizedContours = normalizeContours(data.plot_contours || data.plot_points || []);
+            const orderedContours = applyContourOrder(normalizedContours);
+            renderPlot(orderedContours);
+            renderContourOrder(orderedContours, (order) => {{
+              const contourMap = new Map(normalizedContours.map((contour) => [contour.label, contour]));
+              const reordered = order.map((label) => contourMap.get(label)).filter(Boolean);
+              renderPlot(reordered);
+            }});
             contourStatus.textContent = entries.length
               ? `Including extra contours: ${{entries.join(", ")}}`
               : "No extra contours selected.";
@@ -528,9 +664,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           function renderPlot(contours) {{
             const ctx = plotCanvas.getContext("2d");
             ctx.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
-            const normalizedContours = Array.isArray(contours[0]?.points)
-              ? contours
-              : contours.map((points, index) => ({{ label: String(index + 1), points }}));
+            const normalizedContours = normalizeContours(contours);
             if (!normalizedContours.length) {{
               plotInfo.textContent = "No plot data found for this part.";
               return;

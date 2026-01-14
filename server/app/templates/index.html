@@ -496,47 +496,27 @@
           y: originY + (sheetHeight - y) * scale,
         });
 
-        const getContourArea = (contour) => {
-          if (!contour || contour.length < 3) return 0;
-          let area = 0;
-          contour.forEach((point, index) => {
-            const next = contour[(index + 1) % contour.length];
-            area += point[0] * next[1] - next[0] * point[1];
-          });
-          return area / 2;
-        };
-
-        const getExteriorContour = (contours) => {
-          if (!Array.isArray(contours) || contours.length === 0) return null;
-          return contours.reduce((largest, contour) => {
-            if (!contour || contour.length < 3) return largest;
-            if (!largest) return contour;
-            return Math.abs(getContourArea(contour)) > Math.abs(getContourArea(largest))
-              ? contour
-              : largest;
-          }, null);
-        };
-
         ctx.save();
         ctx.globalCompositeOperation = "destination-out";
         ctx.fillStyle = "#000";
         parts.forEach((part) => {
           const contours = part.plot_points || [];
-          const exterior = getExteriorContour(contours);
-          if (!exterior || exterior.length < 2) return;
-          ctx.beginPath();
-          exterior.forEach((point, pointIndex) => {
-            const baseX = (part.anchor_x ?? 0) + point[0];
-            const baseY = (part.anchor_y ?? 0) + point[1];
-            const canvasPoint = toCanvas(transformPoint(baseX, baseY));
-            if (pointIndex === 0) {
-              ctx.moveTo(canvasPoint.x, canvasPoint.y);
-            } else {
-              ctx.lineTo(canvasPoint.x, canvasPoint.y);
-            }
+          contours.forEach((contour) => {
+            if (!contour || contour.length < 2) return;
+            ctx.beginPath();
+            contour.forEach((point, pointIndex) => {
+              const baseX = (part.anchor_x ?? 0) + point[0];
+              const baseY = (part.anchor_y ?? 0) + point[1];
+              const canvasPoint = toCanvas(transformPoint(baseX, baseY));
+              if (pointIndex === 0) {
+                ctx.moveTo(canvasPoint.x, canvasPoint.y);
+              } else {
+                ctx.lineTo(canvasPoint.x, canvasPoint.y);
+              }
+            });
+            ctx.closePath();
+            ctx.fill();
           });
-          ctx.closePath();
-          ctx.fill();
         });
         ctx.restore();
 

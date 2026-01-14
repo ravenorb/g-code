@@ -169,6 +169,11 @@
       </div>
 
       <h2 id="sheet-layout">Sheet Layout</h2>
+      <div class="order-actions">
+        <button id="preview-sheet-skeleton" class="action-button" type="button" disabled>
+          Preview Sheet Skeleton
+        </button>
+      </div>
       <p id="sheet-info" class="hidden"></p>
       <canvas id="sheet-canvas" class="sheet-canvas" width="1440" height="840"></canvas>
 
@@ -194,6 +199,7 @@
       const rawCode = document.getElementById("raw-code");
       const sheetInfo = document.getElementById("sheet-info");
       const sheetCanvas = document.getElementById("sheet-canvas");
+      const previewSkeletonButton = document.getElementById("preview-sheet-skeleton");
       const partsOrderList = document.getElementById("parts-order");
       const resetCutOrderButton = document.getElementById("reset-cut-order");
       const downloadCutOrderButton = document.getElementById("download-cut-order");
@@ -204,6 +210,10 @@
       let lastJobId = null;
       let lastJob = null;
       let sheetHotspots = [];
+      let lastSheetSnapshot = {
+        setup: null,
+        parts: [],
+      };
       const cutOrderState = {
         originalOrder: [],
         savedOrder: [],
@@ -257,9 +267,9 @@
           renderSummary(data);
           renderStorage(data);
           renderDiagnostics(data);
-          renderRawCode(data.raw_program || []);
-          renderPartsOrder(data.parts || []);
-          renderSheet(data.setup, getOrderedParts(data.parts || [], cutOrderState.pendingOrder));
+        renderRawCode(data.raw_program || []);
+        renderPartsOrder(data.parts || []);
+        renderSheet(data.setup, getOrderedParts(data.parts || [], cutOrderState.pendingOrder));
           cutOrderStatus.textContent = "";
 
           statusEl.textContent = "Validation completed.";
@@ -322,6 +332,8 @@
         sheetInfo.classList.add("hidden");
         sheetHotspots = [];
         sheetCanvas.style.cursor = parts.length ? "pointer" : "default";
+        lastSheetSnapshot = { setup, parts };
+        updateSkeletonButtonState(setup);
 
         if (!setup || !setup.sheetX || !setup.sheetY) {
           sheetInfo.textContent = "No HKINI sheet size found for this file.";
@@ -438,6 +450,81 @@
 
         sheetInfo.textContent = `Sheet: ${sheetWidth} × ${sheetHeight} — Click a part to open.`;
         sheetInfo.classList.remove("hidden");
+      }
+
+      function updateSkeletonButtonState(setup) {
+        previewSkeletonButton.disabled = !setup || !setup.sheetX || !setup.sheetY;
+      }
+
+      function buildSkeletonCanvas(setup, parts) {
+        if (!setup || !setup.sheetX || !setup.sheetY) return null;
+        const canvas = document.createElement("canvas");
+        canvas.width = sheetCanvas.width;
+        canvas.height = sheetCanvas.height;
+        const ctx = canvas.getContext("2d");
+
+        const padding = 24;
+        const sheetWidth = setup.sheetX;
+        const sheetHeight = setup.sheetY;
+        const scale = Math.min(
+          (canvas.width - padding * 2) / sheetWidth,
+          (canvas.height - padding * 2) / sheetHeight
+        );
+        const originX = padding;
+        const originY = padding;
+        const drawWidth = sheetWidth * scale;
+        const drawHeight = sheetHeight * scale;
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#e2e8f0";
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 2;
+        ctx.fillRect(originX, originY, drawWidth, drawHeight);
+        ctx.strokeRect(originX, originY, drawWidth, drawHeight);
+
+        const flipParts180 = true;
+        const transformPoint = (x, y) => {
+          if (!flipParts180) {
+            return { x, y };
+          }
+          return { x: sheetWidth - x, y: sheetHeight - y };
+        };
+        const toCanvas = ({ x, y }) => ({
+          x: originX + x * scale,
+          y: originY + (sheetHeight - y) * scale,
+        });
+
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fillStyle = "#000";
+        parts.forEach((part) => {
+          const contours = part.plot_points || [];
+          contours.forEach((contour) => {
+            if (contour.length < 2) return;
+            ctx.beginPath();
+            contour.forEach((point, pointIndex) => {
+              const baseX = (part.anchor_x ?? 0) + point[0];
+              const baseY = (part.anchor_y ?? 0) + point[1];
+              const canvasPoint = toCanvas(transformPoint(baseX, baseY));
+              if (pointIndex === 0) {
+                ctx.moveTo(canvasPoint.x, canvasPoint.y);
+              } else {
+                ctx.lineTo(canvasPoint.x, canvasPoint.y);
+              }
+            });
+            ctx.closePath();
+            ctx.fill();
+          });
+        });
+        ctx.restore();
+
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(originX, originY, drawWidth, drawHeight);
+
+        return canvas;
       }
 
       function getPartsOrderKey() {
@@ -702,6 +789,29 @@
         if (hit) {
           window.location.href = hit.url;
         }
+      });
+
+      previewSkeletonButton.addEventListener("click", () => {
+        const canvas = buildSkeletonCanvas(lastSheetSnapshot.setup, lastSheetSnapshot.parts || []);
+        if (!canvas) return;
+        const imageUrl = canvas.toDataURL("image/png");
+        const popup = window.open("", "sheet-skeleton-preview", "width=900,height=700");
+        if (!popup) {
+          window.alert("Unable to open preview window. Please allow popups for this site.");
+          return;
+        }
+        popup.document.title = "Sheet Skeleton Preview";
+        popup.document.body.style.margin = "0";
+        popup.document.body.style.display = "flex";
+        popup.document.body.style.alignItems = "center";
+        popup.document.body.style.justifyContent = "center";
+        popup.document.body.style.background = "#f8fafc";
+        const image = popup.document.createElement("img");
+        image.src = imageUrl;
+        image.alt = "Sheet skeleton preview";
+        image.style.maxWidth = "100%";
+        image.style.height = "auto";
+        popup.document.body.appendChild(image);
       });
 
       const params = new URLSearchParams(window.location.search);

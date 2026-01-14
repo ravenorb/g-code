@@ -154,7 +154,7 @@ def build_reordered_program(lines: List[str], parts: List[PartSummary], order: L
     if appended_any and output and output[-1] == "":
         output.pop()
 
-    return output
+    return _collapse_blank_lines(output)
 
 
 def _index_labels(lines: List[str]) -> dict[int, int]:
@@ -164,6 +164,21 @@ def _index_labels(lines: List[str]) -> dict[int, int]:
         if match:
             mapping[int(match.group(1))] = idx
     return mapping
+
+
+def _collapse_blank_lines(lines: Iterable[str]) -> List[str]:
+    collapsed: List[str] = []
+    previous_blank = False
+    for line in lines:
+        if line.strip() == "":
+            if previous_blank:
+                continue
+            collapsed.append("")
+            previous_blank = True
+        else:
+            collapsed.append(line)
+            previous_blank = False
+    return collapsed
 
 
 def _strip_label(line: str) -> tuple[int | None, str]:

@@ -110,7 +110,7 @@ class StorageManager:
         description: str,
         base_filename: str,
     ) -> StoredFile:
-        line_buffer = list(lines)
+        line_buffer = _collapse_blank_lines(lines)
         uploaded_at = datetime.now(timezone.utc)
         job_dir = self.root / source_job_id
         job_dir.mkdir(parents=True, exist_ok=True)
@@ -201,3 +201,18 @@ def extract_sheet_setup(lines: Iterable[str]) -> Dict[str, Any]:
                 continue
         break
     return setup
+
+
+def _collapse_blank_lines(lines: Iterable[str]) -> List[str]:
+    collapsed: List[str] = []
+    previous_blank = False
+    for line in lines:
+        if line.strip() == "":
+            if previous_blank:
+                continue
+            collapsed.append("")
+            previous_blank = True
+        else:
+            collapsed.append(line)
+            previous_blank = False
+    return collapsed

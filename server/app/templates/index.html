@@ -575,6 +575,87 @@
         return canvas;
       }
 
+      function buildSkeletonSegments(sheetWidth, sheetHeight, parts) {
+        const flipParts180 = true;
+        const transformPoint = (x, y) => {
+          if (!flipParts180) {
+            return { x, y };
+          }
+          return { x: sheetWidth - x, y: sheetHeight - y };
+        };
+        const boundsList = parts
+          .map((part) => getPartBounds(part, sheetWidth, sheetHeight, transformPoint))
+          .filter(Boolean);
+        const clearance = 0.1;
+        const minSegmentLength = 0.05;
+        const subtractIntervals = (rangeStart, rangeEnd, blocked) => {
+          if (rangeStart >= rangeEnd) return [];
+          const sorted = blocked
+            .map(([start, end]) => [Math.max(rangeStart, start), Math.min(rangeEnd, end)])
+            .filter(([start, end]) => end > start)
+            .sort((a, b) => a[0] - b[0]);
+          const merged = [];
+          sorted.forEach(([start, end]) => {
+            const last = merged[merged.length - 1];
+            if (!last || start > last[1]) {
+              merged.push([start, end]);
+            } else {
+              last[1] = Math.max(last[1], end);
+            }
+          });
+          const segments = [];
+          let cursor = rangeStart;
+          merged.forEach(([start, end]) => {
+            if (start > cursor + minSegmentLength) {
+              segments.push([cursor, start]);
+            }
+            cursor = Math.max(cursor, end);
+          });
+          if (rangeEnd > cursor + minSegmentLength) {
+            segments.push([cursor, rangeEnd]);
+          }
+          return segments;
+        };
+        const buildBlocked = (axisValue, axisRange, isHorizontal) => {
+          return boundsList
+            .filter((bounds) => {
+              if (isHorizontal) {
+                return axisValue >= bounds.minY - clearance && axisValue <= bounds.maxY + clearance;
+              }
+              return axisValue >= bounds.minX - clearance && axisValue <= bounds.maxX + clearance;
+            })
+            .map((bounds) => {
+              if (isHorizontal) {
+                return [bounds.minX - clearance, bounds.maxX + clearance];
+              }
+              return [bounds.minY - clearance, bounds.maxY + clearance];
+            })
+            .map(([start, end]) => [Math.max(axisRange[0], start), Math.min(axisRange[1], end)])
+            .filter(([start, end]) => end > start);
+        };
+        const splitY = sheetHeight / 2;
+        const splitX = sheetWidth / 3;
+        const splitX2 = splitX * 2;
+        const segments = [];
+        [
+          { orientation: "h", value: splitY, range: [0, sheetWidth] },
+          { orientation: "v", value: splitX, range: [0, sheetHeight] },
+          { orientation: "v", value: splitX2, range: [0, sheetHeight] },
+        ].forEach((line) => {
+          const isHorizontal = line.orientation === "h";
+          const blocked = buildBlocked(line.value, line.range, isHorizontal);
+          const subSegments = subtractIntervals(line.range[0], line.range[1], blocked);
+          subSegments.forEach(([start, end]) => {
+            if (isHorizontal) {
+              segments.push({ start: { x: start, y: line.value }, end: { x: end, y: line.value } });
+            } else {
+              segments.push({ start: { x: line.value, y: start }, end: { x: line.value, y: end } });
+            }
+          });
+        });
+        return segments;
+      }
+
       function getPartsOrderKey() {
         return lastJobId ? `cutOrder:${lastJobId}` : null;
       }
@@ -844,9 +925,6 @@
         if (!canvas) return;
         const sheetWidth = lastSheetSnapshot.setup.sheetX;
         const sheetHeight = lastSheetSnapshot.setup.sheetY;
-        const splitY = sheetHeight / 2;
-        const splitX = sheetWidth / 3;
-        const splitX2 = splitX * 2;
         const imageUrl = canvas.toDataURL("image/png");
         const popup = window.open("", "sheet-skeleton-preview", "width=900,height=700");
         if (!popup) {
@@ -870,11 +948,7 @@
         popup.document.body.appendChild(image);
         const gcodeBlock = popup.document.createElement("pre");
         const formatCoord = (value) => Number(value).toFixed(2);
-        const splitSegments = [
-          { start: { x: 0, y: splitY }, end: { x: sheetWidth, y: splitY } },
-          { start: { x: splitX, y: 0 }, end: { x: splitX, y: sheetHeight } },
-          { start: { x: splitX2, y: 0 }, end: { x: splitX2, y: sheetHeight } },
-        ];
+        const splitSegments = buildSkeletonSegments(sheetWidth, sheetHeight, lastSheetSnapshot.parts || []);
         const segmentBlocks = splitSegments
           .map(
             (segment) => `G0 X${formatCoord(segment.start.x)}, Y${formatCoord(segment.start.y)}

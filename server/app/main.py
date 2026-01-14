@@ -480,6 +480,28 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             color: #475569;
             margin-top: 0.5rem;
           }}
+          .order-actions {{
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 0.75rem;
+          }}
+          .action-button {{
+            padding: 0.4rem 0.85rem;
+            border-radius: 6px;
+            border: 1px solid #1e293b;
+            background: #1e293b;
+            color: #ffffff;
+            cursor: pointer;
+          }}
+          .action-button:disabled {{
+            cursor: not-allowed;
+            opacity: 0.6;
+          }}
+          .order-status {{
+            font-size: 0.9rem;
+            color: #475569;
+          }}
           canvas {{
             border: 1px solid #cbd5e1;
             border-radius: 6px;
@@ -523,10 +545,14 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
         <div class="card">
           <h2>Contour Cut Order (Beta)</h2>
           <p class="order-hint">
-            Drag contours to reorder the cut sequence. The order is saved locally in your browser for this part and
-            does not yet change the generated program output.
+            Drag contours to reorder the cut sequence, then click save. The order is stored locally in your browser
+            for this part and does not yet change the generated program output.
           </p>
           <ol id="contour-order" class="order-list"></ol>
+          <div class="order-actions">
+            <button id="save-contour-order" class="action-button" type="button" disabled>Save Contour Order</button>
+            <span id="contour-order-status" class="order-status"></span>
+          </div>
         </div>
         <div class="card">
           <h2>Part Profile Code</h2>
@@ -549,7 +575,14 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           const applyContours = document.getElementById("apply-contours");
           const downloadLink = document.getElementById("download-program");
           const contourOrderList = document.getElementById("contour-order");
+          const saveContourOrderButton = document.getElementById("save-contour-order");
+          const contourOrderStatus = document.getElementById("contour-order-status");
           const contourOrderKey = "contourOrder:{job_id}:{part_number}";
+          let contourState = {{
+            normalizedContours: [],
+            savedOrder: [],
+            pendingOrder: [],
+          }};
 
           function getExtraContours() {{
             return contourInputs.map((input) => input.value.trim()).filter(Boolean);
@@ -594,10 +627,42 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             localStorage.setItem(contourOrderKey, JSON.stringify(order));
           }}
 
-          function applyContourOrder(contours) {{
-            const order = readContourOrder(contours);
+          function applyContourOrder(contours, order = readContourOrder(contours)) {{
             const contourMap = new Map(contours.map((contour) => [contour.label, contour]));
-            return order.map((label) => contourMap.get(label)).filter(Boolean);
+            return order
+              .map((label) => contourMap.get(label))
+              .filter(Boolean)
+              .map((contour, index) => ({{ ...contour, displayLabel: String(index + 1) }}));
+          }}
+
+          function ordersMatch(left, right) {{
+            if (left.length !== right.length) return false;
+            return left.every((value, index) => value === right[index]);
+          }}
+
+          function updateSaveState() {{
+            const hasChanges = !ordersMatch(contourState.pendingOrder, contourState.savedOrder);
+            saveContourOrderButton.disabled = !contourState.pendingOrder.length || !hasChanges;
+            if (!contourState.pendingOrder.length) {{
+              contourOrderStatus.textContent = "";
+              return;
+            }}
+            contourOrderStatus.textContent = hasChanges ? "Unsaved contour order changes." : "Contour order saved.";
+          }}
+
+          function updateContourListLabels(order) {{
+            const orderedContours = applyContourOrder(contourState.normalizedContours, order);
+            const items = Array.from(contourOrderList.querySelectorAll(".order-item"));
+            items.forEach((item, index) => {{
+              const contour = orderedContours[index];
+              if (!contour) return;
+              const displayLabel = contour.displayLabel ?? contour.label;
+              const suffix =
+                contour.label && displayLabel && contour.label !== displayLabel
+                  ? ` (was ${{contour.label}})`
+                  : "";
+              item.textContent = `Contour ${{displayLabel}}${{suffix}}`;
+            }});
           }}
 
           function renderContourOrder(contours, onUpdate) {{
@@ -611,14 +676,21 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               item.className = "order-item";
               item.setAttribute("draggable", "true");
               item.dataset.label = contour.label;
-              item.textContent = `Contour ${{contour.label}}`;
+              const displayLabel = contour.displayLabel ?? contour.label;
+              const suffix =
+                contour.label && displayLabel && contour.label !== displayLabel
+                  ? ` (was ${{contour.label}})`
+                  : "";
+              item.textContent = `Contour ${{displayLabel}}${{suffix}}`;
               contourOrderList.appendChild(item);
             }});
             enableDragSorting(contourOrderList, () => {{
               const newOrder = Array.from(contourOrderList.querySelectorAll(".order-item")).map(
                 (item) => item.dataset.label
               );
-              saveContourOrder(newOrder);
+              contourState.pendingOrder = newOrder;
+              updateContourListLabels(newOrder);
+              updateSaveState();
               if (typeof onUpdate === "function") {{
                 onUpdate(newOrder);
               }}
@@ -673,13 +745,18 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             profileCode.textContent = (data.profile_block || []).join("\\n");
             partProgram.textContent = (data.part_program || []).join("\\n");
             const normalizedContours = normalizeContours(data.plot_contours || data.plot_points || []);
-            const orderedContours = applyContourOrder(normalizedContours);
+            const savedOrder = readContourOrder(normalizedContours);
+            contourState = {{
+              normalizedContours,
+              savedOrder,
+              pendingOrder: savedOrder,
+            }};
+            const orderedContours = applyContourOrder(normalizedContours, savedOrder);
             renderPlot(orderedContours);
             renderContourOrder(orderedContours, (order) => {{
-              const contourMap = new Map(normalizedContours.map((contour) => [contour.label, contour]));
-              const reordered = order.map((label) => contourMap.get(label)).filter(Boolean);
-              renderPlot(reordered);
+              renderPlot(applyContourOrder(normalizedContours, order));
             }});
+            updateSaveState();
             contourStatus.textContent = entries.length
               ? `Including extra contours: ${{entries.join(", ")}}`
               : "No extra contours selected.";
@@ -748,7 +825,8 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               const transformedLabel = transformPoint([centroid.x / count, centroid.y / count]);
               const labelX = (transformedLabel[0] - minX) * scale + padding;
               const labelY = (maxY - transformedLabel[1]) * scale + padding;
-              ctx.fillText(contour.label || String(contourIndex + 1), labelX + 4, labelY - 4);
+              const label = contour.displayLabel || contour.label || String(contourIndex + 1);
+              ctx.fillText(label, labelX + 4, labelY - 4);
             }});
             plotInfo.textContent =
               "Distance: X " +
@@ -773,6 +851,13 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             url.search = queryString ? queryString.slice(1) : "";
             window.history.replaceState({{}}, "", url);
             loadPart(entries);
+          }});
+
+          saveContourOrderButton.addEventListener("click", () => {{
+            if (!contourState.pendingOrder.length) return;
+            saveContourOrder(contourState.pendingOrder);
+            contourState.savedOrder = [...contourState.pendingOrder];
+            updateSaveState();
           }});
 
           syncInputsFromUrl();

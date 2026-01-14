@@ -4,13 +4,14 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, List, Tuple
 
-from .parser import PartSummary, extract_part_block, extract_part_contour_block
+from .parser import PartSummary, _split_contour_blocks, extract_part_block, extract_part_contour_block
 
 
 HKOST_PATTERN = re.compile(r"HKOST\((?P<params>[^)]*)\)", re.IGNORECASE)
 HKSTR_PATTERN = re.compile(r"HKSTR\((?P<params>[^)]*)\)", re.IGNORECASE)
 HKINI_PATTERN = re.compile(r"HKINI\((?P<params>[^)]*)\)", re.IGNORECASE)
 HKPPP_PATTERN = re.compile(r"HKPPP", re.IGNORECASE)
+HKPED_PATTERN = re.compile(r"HKPED", re.IGNORECASE)
 COORD_PATTERN = re.compile(r"([XY])([-+]?\d*\.?\d+)")
 LINE_LABEL_PATTERN = re.compile(r"^N(\d+)", re.IGNORECASE)
 
@@ -112,7 +113,12 @@ def extract_part_profile_program(content: str, part_line: int, margin: float = 0
     return PartExtractionResult(lines=output, width=width, height=height)
 
 
-def build_reordered_program(lines: List[str], parts: List[PartSummary], order: List[int]) -> List[str]:
+def build_reordered_program(
+    lines: List[str],
+    parts: List[PartSummary],
+    order: List[int],
+    contour_orders: dict[int, list[str]] | None = None,
+) -> List[str]:
     if not parts:
         return list(lines)
 
@@ -139,12 +145,15 @@ def build_reordered_program(lines: List[str], parts: List[PartSummary], order: L
     output.extend(footer_lines)
 
     appended_any = False
+    contour_orders = contour_orders or {}
     for part_number in ordered_parts:
         part = parts_by_number[part_number]
         new_part_number = new_part_numbers[part_number]
         contour_block = extract_part_block(lines, part.part_line)
         if not contour_block:
             continue
+        contour_order = contour_orders.get(part_number, [])
+        contour_block = _reorder_contour_block(contour_block, contour_order)
         if output and output[-1].strip():
             output.append("")
         output.extend(_renumber_block_lines(contour_block, new_part_number))
@@ -155,6 +164,58 @@ def build_reordered_program(lines: List[str], parts: List[PartSummary], order: L
         output.pop()
 
     return _collapse_blank_lines(output)
+
+
+def _reorder_contour_block(part_block: List[str], order: list[str]) -> List[str]:
+    if not order:
+        return part_block
+    contour_blocks = _split_contour_blocks(part_block)
+    if not contour_blocks:
+        return part_block
+    normalized_order = _normalize_contour_order(order, len(contour_blocks))
+    if not normalized_order:
+        return part_block
+    if normalized_order == list(range(1, len(contour_blocks) + 1)):
+        return part_block
+    first_hkstr_idx = next((idx for idx, line in enumerate(part_block) if HKSTR_PATTERN.search(line)), None)
+    if first_hkstr_idx is None:
+        return part_block
+    prefix = part_block[:first_hkstr_idx]
+    suffix = _extract_hkped_suffix(part_block)
+    reordered_blocks = [contour_blocks[idx - 1] for idx in normalized_order]
+    reordered_lines: List[str] = []
+    reordered_lines.extend(prefix)
+    for block in reordered_blocks:
+        reordered_lines.extend(block)
+    reordered_lines.extend(suffix)
+    return reordered_lines
+
+
+def _normalize_contour_order(order: list[str], contour_count: int) -> list[int]:
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for value in order:
+        value_str = str(value).strip()
+        if not value_str.isdigit():
+            continue
+        contour_index = int(value_str)
+        if contour_index < 1 or contour_index > contour_count:
+            continue
+        if contour_index in seen:
+            continue
+        seen.add(contour_index)
+        normalized.append(contour_index)
+    for contour_index in range(1, contour_count + 1):
+        if contour_index not in seen:
+            normalized.append(contour_index)
+    return normalized
+
+
+def _extract_hkped_suffix(lines: List[str]) -> List[str]:
+    for idx, line in enumerate(lines):
+        if HKPED_PATTERN.search(line):
+            return lines[idx:]
+    return []
 
 
 def _index_labels(lines: List[str]) -> dict[int, int]:

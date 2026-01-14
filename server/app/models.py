@@ -125,6 +125,10 @@ class ExtractResponse(BaseModel):
 
 class CutOrderRequest(BaseModel):
     order: List[int] = Field(default_factory=list, description="Ordered list of part numbers.")
+    contour_orders: dict[int, List[str]] = Field(
+        default_factory=dict,
+        description="Contour order labels keyed by part number.",
+    )
 
 
 class JobListing(BaseModel):

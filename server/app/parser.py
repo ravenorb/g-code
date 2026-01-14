@@ -109,7 +109,9 @@ class HKParser:
 
             label_match = LINE_LABEL_RE.match(line)
             part_line = int(label_match.group("label")) if label_match else idx + 1
-            part_number = len(parts) + 1
+            part_number = (
+                _part_number_from_label(part_line) if label_match else len(parts) + 1
+            )
             anchor_x, anchor_y, profile_line = _extract_hkost_details(line)
             start_index = label_to_index.get(profile_line) if profile_line else None
             if start_index is not None:
@@ -432,3 +434,18 @@ def _coerce_float(value: str) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _part_number_from_label(label: int) -> int:
+    label_str = str(abs(label))
+    if not label_str:
+        return 0
+    prefix_len = _label_prefix_length(label_str)
+    return int(label_str[:prefix_len])
+
+
+def _label_prefix_length(label_str: str) -> int:
+    digits = len(label_str)
+    if digits <= 4:
+        return 1
+    return min(4, digits - 4)

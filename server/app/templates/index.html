@@ -53,6 +53,13 @@
       .hidden {
         display: none;
       }
+      .visually-hidden {
+        position: absolute;
+        left: -9999px;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+      }
       .sheet-canvas {
         border: 1px solid #cbd5e1;
         border-radius: 6px;
@@ -99,6 +106,9 @@
         gap: 0.75rem;
         margin-top: 0.75rem;
       }
+      .top-actions {
+        flex-wrap: wrap;
+      }
       .action-button {
         padding: 0.4rem 0.85rem;
         border-radius: 6px;
@@ -106,6 +116,10 @@
         background: #1e293b;
         color: #ffffff;
         cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
       .action-button:disabled {
         cursor: not-allowed;
@@ -120,33 +134,39 @@
   <body>
     <h1>HK Parser Upload</h1>
     <div class="card">
-      <form id="upload-form">
-        <label for="file">Select G-code file:</label>
-        <input type="file" id="file" name="file" accept=".gcode,.txt,.mpf,.nc,.tap" required />
-        <div style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
-          <label for="description">Description:</label><br />
-          <textarea id="description" name="description" rows="3" style="width: 100%;" placeholder="Describe the file contents"></textarea>
-        </div>
-        <button type="submit">Upload & Validate</button>
-      </form>
+      <div class="order-actions top-actions">
+        <button id="reset-cut-order" class="action-button" type="button" disabled>Reset</button>
+        <button id="download-cut-order" class="action-button" type="button" disabled>Create MPF from Cut Order</button>
+        <button id="upload-new-file" class="action-button" type="button">Upload New File</button>
+        <span id="cut-order-status" class="order-status"></span>
+      </div>
       <p id="status" class="hidden"></p>
     </div>
 
+    <form id="upload-form" class="visually-hidden">
+      <label for="file">Select G-code file:</label>
+      <input type="file" id="file" name="file" accept=".gcode,.txt,.mpf,.nc,.tap" required />
+      <textarea id="description" name="description" rows="3"></textarea>
+      <button type="submit">Upload & Validate</button>
+    </form>
+
     <div class="card hidden" id="results-card">
-      <h2>Diagnostics</h2>
       <p id="summary"></p>
       <p id="storage"></p>
-      <table id="diagnostics-table">
-        <thead>
-          <tr>
-            <th>Severity</th>
-            <th>Message</th>
-            <th>Line</th>
-            <th>Code</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div id="diagnostics-section" class="hidden">
+        <h2>Diagnostics</h2>
+        <table id="diagnostics-table">
+          <thead>
+            <tr>
+              <th>Severity</th>
+              <th>Message</th>
+              <th>Line</th>
+              <th>Code</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
       <h2 id="sheet-layout">Sheet Layout</h2>
       <p id="sheet-info" class="hidden"></p>
@@ -154,14 +174,10 @@
 
       <h2>Cut Order (Beta)</h2>
       <p class="order-hint">
-        Drag parts to reorder the cut sequence. The order is saved locally in your browser for this job and does not
-        yet change the generated program output.
+        Drag parts to reorder the cut sequence. The order is saved locally in your browser and used to build the
+        reordered MPF.
       </p>
       <ol id="parts-order" class="order-list"></ol>
-      <div class="order-actions">
-        <button id="download-cut-order" class="action-button" type="button" disabled>Create MPF from Cut Order</button>
-        <span id="cut-order-status" class="order-status"></span>
-      </div>
 
       <h2>Original File Code</h2>
       <pre id="raw-code" class="code-box"></pre>
@@ -173,20 +189,40 @@
       const resultsCard = document.getElementById("results-card");
       const summaryEl = document.getElementById("summary");
       const storageEl = document.getElementById("storage");
+      const diagnosticsSection = document.getElementById("diagnostics-section");
       const diagnosticsBody = document.querySelector("#diagnostics-table tbody");
       const rawCode = document.getElementById("raw-code");
       const sheetInfo = document.getElementById("sheet-info");
       const sheetCanvas = document.getElementById("sheet-canvas");
       const partsOrderList = document.getElementById("parts-order");
+      const resetCutOrderButton = document.getElementById("reset-cut-order");
       const downloadCutOrderButton = document.getElementById("download-cut-order");
       const cutOrderStatus = document.getElementById("cut-order-status");
+      const uploadNewFileButton = document.getElementById("upload-new-file");
+      const fileInput = document.getElementById("file");
+      const descriptionInput = document.getElementById("description");
       let lastJobId = null;
       let lastJob = null;
       let sheetHotspots = [];
+      const cutOrderState = {
+        originalOrder: [],
+        savedOrder: [],
+        pendingOrder: [],
+      };
+
+      uploadNewFileButton.addEventListener("click", () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener("change", () => {
+        if (!fileInput.files.length) return;
+        const description = window.prompt("Describe the file contents (optional):", "");
+        descriptionInput.value = description ? description.trim() : "";
+        form.requestSubmit();
+      });
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const fileInput = document.getElementById("file");
         if (!fileInput.files.length) return;
 
         statusEl.classList.remove("hidden");
@@ -197,11 +233,12 @@
         sheetHotspots = [];
         lastJobId = null;
         cutOrderStatus.textContent = "";
+        resetCutOrderButton.disabled = true;
         downloadCutOrderButton.disabled = true;
 
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
-        formData.append("description", document.getElementById("description").value);
+        formData.append("description", descriptionInput.value);
 
         try {
           const response = await fetch("/upload", {
@@ -218,16 +255,19 @@
           lastJob = data;
           lastJobId = data.job_id;
           renderSummary(data);
-          renderDiagnostics(data.diagnostics);
+          renderStorage(data);
+          renderDiagnostics(data);
           renderRawCode(data.raw_program || []);
-          renderSheet(data.setup, data.parts);
           renderPartsOrder(data.parts || []);
+          renderSheet(data.setup, getOrderedParts(data.parts || [], cutOrderState.pendingOrder));
           cutOrderStatus.textContent = "";
 
           statusEl.textContent = "Validation completed.";
           resultsCard.classList.remove("hidden");
         } catch (err) {
           statusEl.textContent = `Error: ${err.message}`;
+        } finally {
+          fileInput.value = "";
         }
       });
 
@@ -245,6 +285,12 @@
 
       function renderDiagnostics(diagnostics) {
         diagnosticsBody.innerHTML = "";
+        const hasIssues = Boolean(lastJob?.summary?.errors || lastJob?.summary?.warnings);
+        if (!hasIssues) {
+          diagnosticsSection.classList.add("hidden");
+          return;
+        }
+        diagnosticsSection.classList.remove("hidden");
         if (!diagnostics.length) {
           diagnosticsBody.innerHTML = `<tr><td colspan="4">No diagnostics</td></tr>`;
           return;
@@ -379,7 +425,7 @@
           });
 
           ctx.fillStyle = color;
-          ctx.fillText(`P${part.part_number}`, boxX + 4, boxY + 14);
+          ctx.fillText(`#${index + 1} (P${part.part_number})`, boxX + 4, boxY + 14);
 
           sheetHotspots.push({
             x: boxX,
@@ -396,6 +442,10 @@
 
       function getPartsOrderKey() {
         return lastJobId ? `cutOrder:${lastJobId}` : null;
+      }
+
+      function getContourOrderKey(partNumber) {
+        return lastJobId ? `contourOrder:${lastJobId}:${partNumber}` : null;
       }
 
       function readStoredOrder(parts) {
@@ -423,18 +473,57 @@
         localStorage.setItem(key, JSON.stringify(order));
       }
 
+      function readStoredContourOrder(partNumber) {
+        const key = getContourOrderKey(partNumber);
+        if (!key) return [];
+        const raw = localStorage.getItem(key);
+        if (!raw) return [];
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+          return [];
+        }
+      }
+
+      function getOrderedParts(parts, order) {
+        if (!order?.length) return parts;
+        const partsByNumber = new Map(parts.map((part) => [part.part_number, part]));
+        const ordered = order.map((partNumber) => partsByNumber.get(partNumber)).filter(Boolean);
+        const missing = parts.filter((part) => !order.includes(part.part_number));
+        return [...ordered, ...missing];
+      }
+
+      function ordersMatch(left, right) {
+        if (left.length !== right.length) return false;
+        return left.every((value, index) => value === right[index]);
+      }
+
+      function updateCutOrderStatus() {
+        if (!cutOrderState.pendingOrder.length) {
+          cutOrderStatus.textContent = "";
+          return;
+        }
+        const matchesOriginal = ordersMatch(cutOrderState.pendingOrder, cutOrderState.originalOrder);
+        cutOrderStatus.textContent = matchesOriginal
+          ? "Cut order matches the original file."
+          : "Cut order saved locally.";
+      }
+
       function renderPartsOrder(parts) {
         partsOrderList.innerHTML = "";
-        downloadCutOrderButton.disabled = !parts.length;
+        const hasParts = parts.length > 0;
+        downloadCutOrderButton.disabled = !hasParts;
+        resetCutOrderButton.disabled = !hasParts;
         if (!parts.length) {
           partsOrderList.innerHTML = "<li>No parts available.</li>";
           return;
         }
-        const order = readStoredOrder(parts);
-        const partsByNumber = new Map(parts.map((part) => [part.part_number, part]));
-        order.forEach((partNumber) => {
-          const part = partsByNumber.get(partNumber);
-          if (!part) return;
+        cutOrderState.originalOrder = parts.map((part) => part.part_number);
+        cutOrderState.savedOrder = readStoredOrder(parts);
+        cutOrderState.pendingOrder = [...cutOrderState.savedOrder];
+        const orderedParts = getOrderedParts(parts, cutOrderState.savedOrder);
+        orderedParts.forEach((part) => {
           const item = document.createElement("li");
           item.className = "order-item";
           item.setAttribute("draggable", "true");
@@ -447,7 +536,25 @@
             Number(item.dataset.partNumber)
           );
           saveStoredOrder(newOrder);
+          cutOrderState.pendingOrder = newOrder;
+          updateCutOrderStatus();
+          if (lastJob) {
+            const orderedParts = getOrderedParts(lastJob.parts || [], newOrder);
+            renderSheet(lastJob.setup, orderedParts);
+          }
         });
+        updateCutOrderStatus();
+      }
+
+      function buildContourOrders(parts) {
+        const orders = {};
+        parts.forEach((part) => {
+          const stored = readStoredContourOrder(part.part_number);
+          if (stored.length) {
+            orders[part.part_number] = stored;
+          }
+        });
+        return orders;
       }
 
       function getCurrentOrder() {
@@ -466,13 +573,14 @@
         if (!lastJobId) return;
         const order = getCurrentOrder();
         if (!order.length) return;
+        const contourOrders = buildContourOrders(lastJob?.parts || []);
         downloadCutOrderButton.disabled = true;
         cutOrderStatus.textContent = "Building reordered MPF...";
         try {
           const response = await fetch(`/jobs/${lastJobId}/cut-order/program`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ order }),
+            body: JSON.stringify({ order, contour_orders: contourOrders }),
           });
           if (!response.ok) {
             const detail = await response.text();
@@ -495,6 +603,23 @@
         } finally {
           downloadCutOrderButton.disabled = !partsOrderList.querySelector(".order-item");
         }
+      });
+
+      resetCutOrderButton.addEventListener("click", () => {
+        if (!lastJob) return;
+        const key = getPartsOrderKey();
+        if (key) {
+          localStorage.removeItem(key);
+        }
+        (lastJob.parts || []).forEach((part) => {
+          const contourKey = getContourOrderKey(part.part_number);
+          if (contourKey) {
+            localStorage.removeItem(contourKey);
+          }
+        });
+        renderPartsOrder(lastJob.parts || []);
+        renderSheet(lastJob.setup, getOrderedParts(lastJob.parts || [], cutOrderState.pendingOrder));
+        cutOrderStatus.textContent = "Cut order reset to the original file.";
       });
 
       function enableDragSorting(listEl, onUpdate) {
@@ -542,6 +667,7 @@
         sheetHotspots = [];
         lastJobId = jobId;
         cutOrderStatus.textContent = "";
+        resetCutOrderButton.disabled = true;
         downloadCutOrderButton.disabled = true;
 
         try {
@@ -553,10 +679,11 @@
           const data = await response.json();
           lastJob = data;
           renderSummary(data);
+          renderStorage(data);
           renderDiagnostics(data.diagnostics);
           renderRawCode(data.raw_program || []);
-          renderSheet(data.setup, data.parts);
           renderPartsOrder(data.parts || []);
+          renderSheet(data.setup, getOrderedParts(data.parts || [], cutOrderState.pendingOrder));
           statusEl.textContent = "Saved analysis loaded.";
           resultsCard.classList.remove("hidden");
         } catch (err) {

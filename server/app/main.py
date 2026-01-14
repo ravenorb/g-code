@@ -396,7 +396,12 @@ async def cut_order_program(
     if validation is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    reordered_lines = build_reordered_program(validation.raw_lines, validation.parts, request.order)
+    reordered_lines = build_reordered_program(
+        validation.raw_lines,
+        validation.parts,
+        request.order,
+        request.contour_orders,
+    )
     meta = storage_manager.load_job(job_id) or {}
     original_name = meta.get("originalFile", f"{job_id}.mpf")
     filename = _build_cut_order_filename(original_name)
@@ -493,6 +498,10 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             background: #1e293b;
             color: #ffffff;
             cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
           }}
           .action-button:disabled {{
             cursor: not-allowed;
@@ -518,10 +527,11 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
       </head>
       <body>
         <nav class="row">
-          <a href="/?job_id={job_id}">← Return to sheet</a>
-          <span>|</span>
-          <a href="/">Upload new file</a>
+          <button id="reset-contour-order" class="action-button" type="button">Reset</button>
+          <button id="save-contour-order" class="action-button" type="button" disabled>Save Cut Order</button>
+          <a href="/?job_id={job_id}" class="action-button">Back to Sheet View</a>
         </nav>
+        <p id="contour-order-status" class="order-status"></p>
         <h1>Part {part_number}</h1>
         <div class="card">
           <h2>Geometry</h2>
@@ -549,10 +559,6 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             for this part and does not yet change the generated program output.
           </p>
           <ol id="contour-order" class="order-list"></ol>
-          <div class="order-actions">
-            <button id="save-contour-order" class="action-button" type="button" disabled>Save Contour Order</button>
-            <span id="contour-order-status" class="order-status"></span>
-          </div>
         </div>
         <div class="card">
           <h2>Part Profile Code</h2>
@@ -577,6 +583,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           const contourOrderList = document.getElementById("contour-order");
           const saveContourOrderButton = document.getElementById("save-contour-order");
           const contourOrderStatus = document.getElementById("contour-order-status");
+          const resetContourOrderButton = document.getElementById("reset-contour-order");
           const contourOrderKey = "contourOrder:{job_id}:{part_number}";
           let contourState = {{
             normalizedContours: [],
@@ -858,6 +865,11 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             saveContourOrder(contourState.pendingOrder);
             contourState.savedOrder = [...contourState.pendingOrder];
             updateSaveState();
+          }});
+
+          resetContourOrderButton.addEventListener("click", () => {{
+            localStorage.removeItem(contourOrderKey);
+            loadPart(getExtraContours());
           }});
 
           syncInputsFromUrl();

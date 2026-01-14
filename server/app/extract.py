@@ -128,13 +128,12 @@ def build_reordered_program(lines: List[str], parts: List[PartSummary], order: L
     for part_number in ordered_parts:
         part = parts_by_number[part_number]
         new_part_number = new_part_numbers[part_number]
-        offset = (new_part_number * 10000) - part.part_line
         hkost_index = part.hkost_line - 1
         if hkost_index < 0 or hkost_index >= len(lines):
             continue
-        output.append(_renumber_hkost_line(lines[hkost_index], offset))
+        output.append(_renumber_hkost_line(lines[hkost_index], new_part_number))
         trailer_lines, _ = _collect_until_hkppp(lines, hkost_index)
-        output.extend(_renumber_block_lines(trailer_lines, offset))
+        output.extend(_renumber_block_lines(trailer_lines, new_part_number))
 
     footer_lines = _footer_lines(lines, strip_contours=True)
     output.extend(footer_lines)
@@ -143,13 +142,12 @@ def build_reordered_program(lines: List[str], parts: List[PartSummary], order: L
     for part_number in ordered_parts:
         part = parts_by_number[part_number]
         new_part_number = new_part_numbers[part_number]
-        offset = (new_part_number * 10000) - part.part_line
         contour_block = extract_part_block(lines, part.part_line)
         if not contour_block:
             continue
         if output and output[-1].strip():
             output.append("")
-        output.extend(_renumber_block_lines(contour_block, offset))
+        output.extend(_renumber_block_lines(contour_block, new_part_number))
         output.append("")
         appended_any = True
 
@@ -175,36 +173,51 @@ def _strip_label(line: str) -> tuple[int | None, str]:
     return int(match.group(1)), line[match.end() :].lstrip()
 
 
-def _renumber_block_lines(lines: List[str], offset: int) -> List[str]:
-    if offset == 0:
-        return list(lines)
-    return [_renumber_line_label(line, offset) for line in lines]
+def _renumber_block_lines(lines: List[str], new_part_number: int) -> List[str]:
+    return [_renumber_line_label(line, new_part_number) for line in lines]
 
 
-def _renumber_line_label(line: str, offset: int) -> str:
+def _renumber_line_label(line: str, new_part_number: int) -> str:
     match = LINE_LABEL_PATTERN.match(line)
     if not match:
         return line
-    new_label = int(match.group(1)) + offset
-    return f"N{new_label}{line[match.end():]}"
+    original_label = match.group(1)
+    updated_label = _renumber_label(original_label, new_part_number)
+    return f"N{updated_label}{line[match.end():]}"
 
 
-def _renumber_hkost_line(line: str, offset: int) -> str:
-    updated = _renumber_line_label(line, offset)
-    if offset == 0:
-        return updated
+def _renumber_hkost_line(line: str, new_part_number: int) -> str:
+    updated = _renumber_line_label(line, new_part_number)
     match = HKOST_PATTERN.search(updated)
     if not match:
         return updated
     params = [p.strip() for p in match.group("params").split(",")]
     if len(params) < 4:
         return updated
+    profile_line_raw = params[3]
     try:
-        profile_line = int(float(params[3]))
+        profile_line = int(float(profile_line_raw))
     except ValueError:
         return updated
-    params[3] = str(profile_line + offset)
+    params[3] = _renumber_label(str(profile_line), new_part_number)
     return HKOST_PATTERN.sub(f"HKOST({','.join(params)})", updated)
+
+
+def _renumber_label(label: str, new_part_number: int) -> str:
+    if not label:
+        return label
+    prefix_len = _label_prefix_length(len(label))
+    suffix = label[prefix_len:] if len(label) > prefix_len else ""
+    new_prefix = str(new_part_number)
+    if len(new_prefix) < prefix_len:
+        new_prefix = new_prefix.zfill(prefix_len)
+    return f"{new_prefix}{suffix}"
+
+
+def _label_prefix_length(label_digits: int) -> int:
+    if label_digits <= 4:
+        return 1
+    return min(4, label_digits - 4)
 
 
 def _insert_extra_contours(part_lines: List[str], extra_blocks: List[List[str]]) -> List[str]:

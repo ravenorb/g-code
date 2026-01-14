@@ -34,7 +34,9 @@ class ParsedLineModel(BaseModel):
 
 
 class PartSummaryModel(BaseModel):
-    part_number: int = Field(description="Sequential part number starting at 1.")
+    part_number: int = Field(
+        description="Part number derived from the line-label prefix (e.g., 1 for N10000)."
+    )
     part_line: int = Field(description="Line label for the HKOST declaration (e.g., 10000).")
     hkost_line: int = Field(description="Line number where the HKOST declaration appears in the file.")
     profile_line: Optional[int] = Field(

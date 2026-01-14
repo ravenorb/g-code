@@ -851,15 +851,36 @@
         popup.document.title = "Sheet Skeleton Preview";
         popup.document.body.style.margin = "0";
         popup.document.body.style.display = "flex";
+        popup.document.body.style.flexDirection = "column";
         popup.document.body.style.alignItems = "center";
         popup.document.body.style.justifyContent = "center";
         popup.document.body.style.background = "#f8fafc";
+        popup.document.body.style.gap = "16px";
+        popup.document.body.style.padding = "24px";
         const image = popup.document.createElement("img");
         image.src = imageUrl;
         image.alt = "Sheet skeleton preview";
         image.style.maxWidth = "100%";
         image.style.height = "auto";
         popup.document.body.appendChild(image);
+        const gcodeBlock = popup.document.createElement("pre");
+        gcodeBlock.textContent = `N10001 HKSTR(1,1,0,0,0,0.0,0,0)
+HKPIE(0,0,0)
+
+G0 Xnn.nn, Ynn.nn
+HKCUT(0,0,0)
+G1 Xnn.nn, Ynn.nn
+HKSTO(0,0,0)`;
+        gcodeBlock.style.background = "#0f172a";
+        gcodeBlock.style.color = "#f8fafc";
+        gcodeBlock.style.padding = "16px 20px";
+        gcodeBlock.style.borderRadius = "12px";
+        gcodeBlock.style.width = "min(720px, 100%)";
+        gcodeBlock.style.whiteSpace = "pre-wrap";
+        gcodeBlock.style.fontFamily = "SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace";
+        gcodeBlock.style.fontSize = "14px";
+        gcodeBlock.style.lineHeight = "1.6";
+        popup.document.body.appendChild(gcodeBlock);
       });
 
       const params = new URLSearchParams(window.location.search);

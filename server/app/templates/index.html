@@ -456,6 +456,39 @@
         previewSkeletonButton.disabled = !setup || !setup.sheetX || !setup.sheetY;
       }
 
+      function getPartBounds(part, sheetWidth, sheetHeight, transformPoint) {
+        const contours = part.plot_points || [];
+        let minX = null;
+        let minY = null;
+        let maxX = null;
+        let maxY = null;
+
+        if (contours.length) {
+          contours.flat().forEach((point) => {
+            const baseX = (part.anchor_x ?? 0) + point[0];
+            const baseY = (part.anchor_y ?? 0) + point[1];
+            const { x, y } = transformPoint(baseX, baseY);
+            minX = minX === null ? x : Math.min(minX, x);
+            minY = minY === null ? y : Math.min(minY, y);
+            maxX = maxX === null ? x : Math.max(maxX, x);
+            maxY = maxY === null ? y : Math.max(maxY, y);
+          });
+        }
+
+        if (minX === null || minY === null || maxX === null || maxY === null) {
+          if (part.anchor_x == null || part.anchor_y == null) {
+            return null;
+          }
+          const { x, y } = transformPoint(part.anchor_x, part.anchor_y);
+          minX = Math.max(0, x - 1);
+          maxX = Math.min(sheetWidth, x + 1);
+          minY = Math.max(0, y - 1);
+          maxY = Math.min(sheetHeight, y + 1);
+        }
+
+        return { minX, minY, maxX, maxY };
+      }
+
       function buildSkeletonCanvas(setup, parts) {
         if (!setup || !setup.sheetX || !setup.sheetY) return null;
         const canvas = document.createElement("canvas");
@@ -500,23 +533,16 @@
         ctx.globalCompositeOperation = "destination-out";
         ctx.fillStyle = "#000";
         parts.forEach((part) => {
-          const contours = part.plot_points || [];
-          contours.forEach((contour) => {
-            if (!contour || contour.length < 2) return;
-            ctx.beginPath();
-            contour.forEach((point, pointIndex) => {
-              const baseX = (part.anchor_x ?? 0) + point[0];
-              const baseY = (part.anchor_y ?? 0) + point[1];
-              const canvasPoint = toCanvas(transformPoint(baseX, baseY));
-              if (pointIndex === 0) {
-                ctx.moveTo(canvasPoint.x, canvasPoint.y);
-              } else {
-                ctx.lineTo(canvasPoint.x, canvasPoint.y);
-              }
-            });
-            ctx.closePath();
-            ctx.fill();
-          });
+          const bounds = getPartBounds(part, sheetWidth, sheetHeight, transformPoint);
+          if (!bounds) return;
+          const topLeft = toCanvas({ x: bounds.minX, y: bounds.maxY });
+          const bottomRight = toCanvas({ x: bounds.maxX, y: bounds.minY });
+          const rectX = topLeft.x;
+          const rectY = topLeft.y;
+          const rectW = bottomRight.x - topLeft.x;
+          const rectH = bottomRight.y - topLeft.y;
+          if (rectW <= 0 || rectH <= 0) return;
+          ctx.fillRect(rectX, rectY, rectW, rectH);
         });
         ctx.restore();
 

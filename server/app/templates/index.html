@@ -842,6 +842,11 @@
       previewSkeletonButton.addEventListener("click", () => {
         const canvas = buildSkeletonCanvas(lastSheetSnapshot.setup, lastSheetSnapshot.parts || []);
         if (!canvas) return;
+        const sheetWidth = lastSheetSnapshot.setup.sheetX;
+        const sheetHeight = lastSheetSnapshot.setup.sheetY;
+        const splitY = sheetHeight / 2;
+        const splitX = sheetWidth / 3;
+        const splitX2 = splitX * 2;
         const imageUrl = canvas.toDataURL("image/png");
         const popup = window.open("", "sheet-skeleton-preview", "width=900,height=700");
         if (!popup) {
@@ -864,13 +869,24 @@
         image.style.height = "auto";
         popup.document.body.appendChild(image);
         const gcodeBlock = popup.document.createElement("pre");
+        const formatCoord = (value) => Number(value).toFixed(2);
+        const splitSegments = [
+          { start: { x: 0, y: splitY }, end: { x: sheetWidth, y: splitY } },
+          { start: { x: splitX, y: 0 }, end: { x: splitX, y: sheetHeight } },
+          { start: { x: splitX2, y: 0 }, end: { x: splitX2, y: sheetHeight } },
+        ];
+        const segmentBlocks = splitSegments
+          .map(
+            (segment) => `G0 X${formatCoord(segment.start.x)}, Y${formatCoord(segment.start.y)}
+HKCUT(0,0,0)
+G1 X${formatCoord(segment.end.x)}, Y${formatCoord(segment.end.y)}
+HKSTO(0,0,0)`
+          )
+          .join("\n\n");
         gcodeBlock.textContent = `N10001 HKSTR(1,1,0,0,0,0.0,0,0)
 HKPIE(0,0,0)
 
-G0 Xnn.nn, Ynn.nn
-HKCUT(0,0,0)
-G1 Xnn.nn, Ynn.nn
-HKSTO(0,0,0)`;
+${segmentBlocks}`;
         gcodeBlock.style.background = "#0f172a";
         gcodeBlock.style.color = "#f8fafc";
         gcodeBlock.style.padding = "16px 20px";

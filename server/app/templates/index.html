@@ -529,6 +529,28 @@
           y: originY + (sheetHeight - y) * scale,
         });
 
+        const splitY = sheetHeight / 2;
+        const splitX = sheetWidth / 3;
+        const splitX2 = splitX * 2;
+        const leftMid = toCanvas({ x: 0, y: splitY });
+        const rightMid = toCanvas({ x: sheetWidth, y: splitY });
+        const splitLeftTop = toCanvas({ x: splitX, y: sheetHeight });
+        const splitLeftBottom = toCanvas({ x: splitX, y: 0 });
+        const splitRightTop = toCanvas({ x: splitX2, y: sheetHeight });
+        const splitRightBottom = toCanvas({ x: splitX2, y: 0 });
+
+        ctx.strokeStyle = "#dc2626";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(leftMid.x, leftMid.y);
+        ctx.lineTo(rightMid.x, rightMid.y);
+        ctx.moveTo(splitLeftTop.x, splitLeftTop.y);
+        ctx.lineTo(splitLeftBottom.x, splitLeftBottom.y);
+        ctx.moveTo(splitRightTop.x, splitRightTop.y);
+        ctx.lineTo(splitRightBottom.x, splitRightBottom.y);
+        ctx.stroke();
+
         ctx.save();
         ctx.globalCompositeOperation = "destination-out";
         ctx.fillStyle = "#000";

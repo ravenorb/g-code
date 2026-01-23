@@ -148,7 +148,8 @@
       <input type="file" id="file" name="file" accept=".gcode,.txt,.mpf,.nc,.tap" required />
       <label for="attachment">Link PDF (optional):</label>
       <input type="file" id="attachment" name="attachment" accept=".pdf,application/pdf" />
-      <textarea id="description" name="description" rows="3"></textarea>
+      <label for="description">Description (optional):</label>
+      <textarea id="description" name="description" rows="3" placeholder="Add any notes about the file..."></textarea>
       <button type="submit">Upload & Validate</button>
     </form>
 
@@ -224,14 +225,17 @@
       };
 
       uploadNewFileButton.addEventListener("click", () => {
-        fileInput.click();
+        form.classList.remove("visually-hidden");
+        fileInput.value = "";
+        attachmentInput.value = "";
+        descriptionInput.value = "";
+        fileInput.focus();
       });
 
       fileInput.addEventListener("change", () => {
         if (!fileInput.files.length) return;
-        const description = window.prompt("Describe the file contents (optional):", "");
-        descriptionInput.value = description ? description.trim() : "";
-        form.requestSubmit();
+        statusEl.classList.remove("hidden");
+        statusEl.textContent = "Ready to upload. Optionally attach a PDF, add a description, then click Upload.";
       });
 
       form.addEventListener("submit", async (event) => {

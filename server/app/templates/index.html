@@ -50,6 +50,12 @@
       .badge.warning {
         background: #f59e0b;
       }
+      .badge.success {
+        background: #22c55e;
+      }
+      .badge.neutral {
+        background: #64748b;
+      }
       .hidden {
         display: none;
       }
@@ -129,6 +135,15 @@
         font-size: 0.9rem;
         color: #475569;
       }
+      .sample-meta {
+        color: #64748b;
+        font-size: 0.85rem;
+      }
+      .sample-table small {
+        color: #64748b;
+        display: block;
+        margin-top: 0.15rem;
+      }
     </style>
   </head>
   <body>
@@ -141,6 +156,24 @@
         <span id="cut-order-status" class="order-status"></span>
       </div>
       <p id="status" class="hidden"></p>
+    </div>
+
+    <div class="card" id="samples-card">
+      <h2>Sample Library</h2>
+      <p id="samples-status" class="sample-meta">Loading sample matches...</p>
+      <table id="samples-table" class="sample-table hidden">
+        <thead>
+          <tr>
+            <th>MPF File</th>
+            <th>PDF Match</th>
+            <th>Score</th>
+            <th>Sheet</th>
+            <th>Parts</th>
+            <th>Diagnostics</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
 
     <form id="upload-form" class="visually-hidden">
@@ -211,6 +244,9 @@
       const fileInput = document.getElementById("file");
       const attachmentInput = document.getElementById("attachment");
       const descriptionInput = document.getElementById("description");
+      const samplesStatus = document.getElementById("samples-status");
+      const samplesTable = document.getElementById("samples-table");
+      const samplesBody = document.querySelector("#samples-table tbody");
       let lastJobId = null;
       let lastJob = null;
       let sheetHotspots = [];
@@ -231,6 +267,8 @@
         descriptionInput.value = "";
         fileInput.focus();
       });
+
+      loadSampleMatches();
 
       fileInput.addEventListener("change", () => {
         if (!fileInput.files.length) return;
@@ -307,6 +345,90 @@
         }
         if (data.uploaded_at) storageBits.push(`Uploaded: ${data.uploaded_at}`);
         storageEl.textContent = storageBits.join(" | ");
+      }
+
+      async function loadSampleMatches() {
+        samplesStatus.textContent = "Loading sample matches...";
+        samplesTable.classList.add("hidden");
+        samplesBody.innerHTML = "";
+        try {
+          const response = await fetch("/samples");
+          if (!response.ok) {
+            throw new Error("Unable to load samples");
+          }
+          const data = await response.json();
+          renderSampleMatches(data);
+        } catch (err) {
+          samplesStatus.textContent = `Samples unavailable: ${err.message}`;
+        }
+      }
+
+      function renderSampleMatches(data) {
+        const matches = data.matches || [];
+        if (!matches.length) {
+          samplesStatus.textContent = "No sample files found.";
+          return;
+        }
+        samplesStatus.textContent = `Loaded ${matches.length} MPF samples.`;
+        samplesTable.classList.remove("hidden");
+        const threshold = data.matches?.[0]?.match_threshold ?? 0.72;
+        matches.forEach((match) => {
+          const row = document.createElement("tr");
+          const mpfLink = buildSampleLink("mpf", match.mpf?.filename);
+          const mpfCell = match.mpf?.filename
+            ? `<a href="${mpfLink}" target="_blank" rel="noopener">${match.mpf.filename}</a>`
+            : "Unknown";
+          const pdfCell = buildPdfCell(match);
+          const score = match.match_score;
+          const scoreText = score != null ? `${Math.round(score * 100)}%` : "--";
+          const scoreBadge = score != null && score >= threshold ? "success" : "warning";
+          const sheet = formatSheet(match.summary);
+          const parts = match.summary?.parts ?? 0;
+          const diagnostics = formatDiagnostics(match.summary);
+          row.innerHTML = `
+            <td>${mpfCell}<small>${match.job_id ?? ""}</small></td>
+            <td>${pdfCell}</td>
+            <td><span class="badge ${scoreBadge}">${scoreText}</span></td>
+            <td>${sheet}</td>
+            <td>${parts}</td>
+            <td>${diagnostics}</td>
+          `;
+          samplesBody.appendChild(row);
+        });
+      }
+
+      function buildSampleLink(kind, filename) {
+        if (!filename) return "#";
+        return `/samples/files/${kind}/${encodeURIComponent(filename)}`;
+      }
+
+      function buildPdfCell(match) {
+        if (match.pdf?.filename) {
+          const pdfLink = buildSampleLink("pdfs", match.pdf.filename);
+          return `<a href="${pdfLink}" target="_blank" rel="noopener">${match.pdf.filename}</a>`;
+        }
+        const suggestions = (match.suggestions || [])
+          .map((item) => `${item.filename} (${Math.round(item.score * 100)}%)`)
+          .join(", ");
+        return `No PDF match${suggestions ? `<small>Suggestions: ${suggestions}</small>` : ""}`;
+      }
+
+      function formatSheet(summary) {
+        const sheetX = summary?.sheetX;
+        const sheetY = summary?.sheetY;
+        if (sheetX == null || sheetY == null) {
+          return "<span class=\"badge neutral\">Unknown</span>";
+        }
+        return `${sheetX} × ${sheetY}`;
+      }
+
+      function formatDiagnostics(summary) {
+        const errors = summary?.errors ?? 0;
+        const warnings = summary?.warnings ?? 0;
+        if (!errors && !warnings) {
+          return `<span class="badge success">Clean</span>`;
+        }
+        return `E:${errors} W:${warnings}`;
       }
 
       function renderDiagnostics(diagnostics) {

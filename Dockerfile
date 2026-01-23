@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY server /app/server
 COPY parser /app/parser
+COPY samples /app/samples
 
 EXPOSE 80
 

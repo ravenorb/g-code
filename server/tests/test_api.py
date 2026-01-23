@@ -108,15 +108,21 @@ async def test_upload_persists_metadata_and_extracts_part(client):
 
     response = await client.post(
         "/upload",
-        files={"file": ("job.mpf", io.BytesIO(payload), "text/plain")},
+        files={
+            "file": ("job.mpf", io.BytesIO(payload), "text/plain"),
+            "attachment": ("job.pdf", io.BytesIO(b"%PDF-1.4 test"), "application/pdf"),
+        },
         data={"description": "single part demo"},
     )
     assert response.status_code == 200
     upload_body = response.json()
     assert upload_body["stored_path"]
     assert upload_body["meta_path"]
+    assert upload_body["link_meta_path"]
+    assert upload_body["linked_files"]
     assert Path(upload_body["stored_path"]).exists()
     assert Path(upload_body["meta_path"]).exists()
+    assert Path(upload_body["link_meta_path"]).exists()
 
     part_label = 10000
     extract_response = await client.post(

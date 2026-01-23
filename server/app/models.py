@@ -102,6 +102,8 @@ class ValidateRequest(BaseModel):
 class UploadResponse(ValidationResponse):
     stored_path: Optional[str] = Field(default=None, description="Filesystem path of the uploaded program.")
     meta_path: Optional[str] = Field(default=None, description="Path to the generated metadata file.")
+    link_meta_path: Optional[str] = Field(default=None, description="Path to the link metadata file.")
+    linked_files: Optional[List[Any]] = Field(default=None, description="Linked asset records for the upload.")
     description: Optional[str] = Field(default=None, description="User-provided description of the upload.")
     uploaded_at: Optional[datetime] = Field(default=None, description="Timestamp of upload.")
 

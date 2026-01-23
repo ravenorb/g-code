@@ -98,6 +98,7 @@ async def index() -> HTMLResponse:
 async def upload_file(
     file: UploadFile = File(...),
     description: Annotated[Optional[str], Form()] = None,
+    attachment: Annotated[Optional[UploadFile], File()] = None,
     validator: ValidationService = Depends(get_validation_service),
     release_manager: ReleaseManager = Depends(get_release_manager),
     storage_manager: StorageManager = Depends(get_storage_manager),
@@ -105,6 +106,18 @@ async def upload_file(
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    linked_files = []
+    if attachment is not None:
+        attachment_content = await attachment.read()
+        if attachment_content:
+            linked_files.append(
+                {
+                    "filename": attachment.filename,
+                    "media_type": attachment.content_type,
+                    "content": attachment_content,
+                }
+            )
 
     job_id = hash_payload(content)[:12]
     lines = load_from_bytes(content)
@@ -118,6 +131,7 @@ async def upload_file(
         description=description or "",
         validation=result,
         setup=setup,
+        linked_files=linked_files,
     )
     logger.info("Upload validated for job %s with %d diagnostics", job_id, len(result.diagnostics))
     payload = _build_validation_payload(result, setup=setup)
@@ -125,6 +139,8 @@ async def upload_file(
         **payload,
         stored_path=str(stored.stored_path),
         meta_path=str(stored.meta_path),
+        link_meta_path=str(stored.link_meta_path) if stored.link_meta_path else None,
+        linked_files=stored.linked_files,
         description=description,
         uploaded_at=stored.uploaded_at,
     )

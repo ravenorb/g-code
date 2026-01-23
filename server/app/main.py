@@ -9,7 +9,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from .config import DEFAULT_CONFIG, ServiceConfig
 from .diagnostics import ValidationService, hash_payload
 from .extract import build_reordered_program, extract_part_profile_program, extract_part_program
@@ -33,6 +33,7 @@ from .models import (
 )
 from .release import ReleaseManager
 from .parser import build_part_plot_points, extract_part_block, extract_part_contour_block, load_from_bytes
+from .samples import load_sample_index
 from .storage import StorageManager, extract_sheet_setup
 
 app = FastAPI(title="HK Parser Service", version="0.1.0")
@@ -165,6 +166,26 @@ async def validate(
 async def list_jobs(storage_manager: StorageManager = Depends(get_storage_manager)) -> list[JobListing]:
     jobs = storage_manager.list_jobs()
     return [JobListing(**job) for job in jobs]
+
+
+@app.get("/samples")
+async def list_samples(
+    config: Annotated[ServiceConfig, Depends(get_config)],
+    validator: ValidationService = Depends(get_validation_service),
+) -> dict:
+    return load_sample_index(config=config, validator=validator)
+
+
+@app.get("/samples/files/{kind}/{filename}")
+async def sample_file(kind: str, filename: str) -> Response:
+    if kind not in {"mpf", "pdfs"}:
+        raise HTTPException(status_code=404, detail="Unknown sample category")
+    sample_root = Path(__file__).resolve().parents[2] / "samples"
+    safe_name = Path(filename).name
+    sample_path = sample_root / kind / safe_name
+    if not sample_path.exists():
+        raise HTTPException(status_code=404, detail="Sample file not found")
+    return FileResponse(sample_path)
 
 
 @app.get("/jobs/{job_id}/analysis", response_model=ValidationResponse)

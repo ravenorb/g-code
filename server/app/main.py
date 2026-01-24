@@ -33,7 +33,7 @@ from .models import (
 )
 from .release import ReleaseManager
 from .parser import build_part_plot_points, extract_part_block, extract_part_contour_block, load_from_bytes
-from .samples import load_sample_index
+from .samples import load_sample_index, save_match_override
 from .storage import StorageManager, extract_sheet_setup
 
 app = FastAPI(title="HK Parser Service", version="0.1.0")
@@ -174,6 +174,23 @@ async def list_samples(
     validator: ValidationService = Depends(get_validation_service),
 ) -> dict:
     return load_sample_index(config=config, validator=validator)
+
+
+@app.post("/samples/matches")
+async def store_sample_match(
+    payload: dict,
+    config: Annotated[ServiceConfig, Depends(get_config)],
+) -> dict:
+    mpf_filename = payload.get("mpf_filename")
+    if not mpf_filename:
+        raise HTTPException(status_code=400, detail="mpf_filename is required")
+    pdf_filename = payload.get("pdf_filename")
+    updated = save_match_override(
+        config=config,
+        mpf_filename=str(mpf_filename),
+        pdf_filename=str(pdf_filename) if pdf_filename else None,
+    )
+    return {"status": "ok", "matches": updated.get("matches", {})}
 
 
 @app.get("/samples/files/{kind}/{filename}")

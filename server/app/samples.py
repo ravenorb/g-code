@@ -14,6 +14,7 @@ from .storage import extract_sheet_setup
 
 
 MATCH_THRESHOLD = 0.72
+MATCH_STORE_NAME = "correct-matches.json"
 
 
 def load_sample_index(config: ServiceConfig, validator: ValidationService) -> Dict[str, Any]:
@@ -24,6 +25,8 @@ def load_sample_index(config: ServiceConfig, validator: ValidationService) -> Di
     pdf_files = _list_files(pdf_dir, {".pdf"})
     signature = _build_signature(mpf_files, pdf_files)
 
+    overrides = _load_match_overrides(config)
+
     cache_dir = config.storage_root / "samples"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_path = cache_dir / "sample-index.json"
@@ -32,6 +35,14 @@ def load_sample_index(config: ServiceConfig, validator: ValidationService) -> Di
         return cached
 
     pdf_index = _build_pdf_index(pdf_files)
+    pdf_catalog = [
+        {
+            **_file_info(path),
+            "normalized": pdf_index[path.name]["normalized"],
+            "tokens": pdf_index[path.name]["tokens"],
+        }
+        for path in pdf_files
+    ]
     matches: List[Dict[str, Any]] = []
     matched_pdf_names: set[str] = set()
     for mpf_path in mpf_files:
@@ -39,22 +50,43 @@ def load_sample_index(config: ServiceConfig, validator: ValidationService) -> Di
         best_pdf, suggestions = _match_pdf(mpf_path.name, pdf_index)
         matched_pdf = None
         match_score = None
+        match_source = "auto"
+        auto_match = None
         if best_pdf:
             matched_pdf = _file_info(best_pdf)
             match_score = suggestions[0]["score"] if suggestions else None
             if match_score is not None and match_score >= MATCH_THRESHOLD:
                 matched_pdf_names.add(best_pdf.name)
+            auto_match = {
+                **matched_pdf,
+                "normalized": pdf_index[best_pdf.name]["normalized"],
+                "tokens": pdf_index[best_pdf.name]["tokens"],
+                "score": match_score,
+            }
+        correct_match = _resolve_correct_match(mpf_path.name, overrides, pdf_index)
+        if correct_match:
+            match_source = "manual"
+            matched_pdf = correct_match.get("file_info")
+            match_score = correct_match.get("score")
+            if matched_pdf and matched_pdf.get("filename") in pdf_index:
+                matched_pdf_names.add(matched_pdf["filename"])
         matches.append(
             {
                 "mpf": _file_info(mpf_path),
+                "mpf_normalized": _normalize_name(mpf_path.name),
+                "mpf_tokens": _tokenize(mpf_path.name),
                 "pdf": matched_pdf,
+                "auto_match": auto_match,
                 "match_score": match_score,
                 "match_threshold": MATCH_THRESHOLD,
+                "match_source": match_source,
+                "correct_match": correct_match,
                 "suggestions": suggestions,
                 "summary": parsed["summary"],
                 "parts": parsed["parts"],
                 "setup": parsed["setup"],
                 "job_id": parsed["job_id"],
+                "pair_insights": _build_pair_insights(mpf_path.name, matched_pdf),
             }
         )
 
@@ -67,6 +99,7 @@ def load_sample_index(config: ServiceConfig, validator: ValidationService) -> Di
         "signature": signature,
         "sample_root": str(sample_root),
         "matches": matches,
+        "pdfs": pdf_catalog,
         "unmatched_pdfs": unmatched_pdfs,
     }
     cache_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -205,4 +238,96 @@ def _parse_mpf(path: Path, validator: ValidationService) -> Dict[str, Any]:
         "summary": summary,
         "parts": parts,
         "setup": setup,
+    }
+
+
+def _matches_path(config: ServiceConfig) -> Path:
+    return config.storage_root / "samples" / MATCH_STORE_NAME
+
+
+def _load_match_overrides(config: ServiceConfig) -> Dict[str, Any]:
+    match_path = _matches_path(config)
+    if not match_path.exists():
+        return {"matches": {}}
+    try:
+        payload = json.loads(match_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"matches": {}}
+    if not isinstance(payload, dict):
+        return {"matches": {}}
+    return payload
+
+
+def save_match_override(
+    config: ServiceConfig,
+    mpf_filename: str,
+    pdf_filename: str | None,
+) -> Dict[str, Any]:
+    safe_mpf = Path(mpf_filename).name
+    safe_pdf = Path(pdf_filename).name if pdf_filename else None
+    match_path = _matches_path(config)
+    match_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _load_match_overrides(config)
+    matches = payload.setdefault("matches", {})
+    if safe_pdf:
+        matches[safe_mpf] = {
+            "pdf": safe_pdf,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    else:
+        matches.pop(safe_mpf, None)
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    match_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload
+
+
+def _resolve_correct_match(
+    mpf_name: str,
+    overrides: Dict[str, Any],
+    pdf_index: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any] | None:
+    matches = overrides.get("matches") if isinstance(overrides, dict) else None
+    if not isinstance(matches, dict):
+        return None
+    entry = matches.get(mpf_name)
+    if not isinstance(entry, dict):
+        return None
+    pdf_name = entry.get("pdf")
+    if not pdf_name:
+        return None
+    pdf_info = None
+    if pdf_name in pdf_index:
+        pdf_path = pdf_index[pdf_name]["path"]
+        pdf_info = {
+            **_file_info(pdf_path),
+            "normalized": pdf_index[pdf_name]["normalized"],
+            "tokens": pdf_index[pdf_name]["tokens"],
+        }
+    score = _score_pair(mpf_name, pdf_name) if pdf_name else None
+    return {
+        "filename": pdf_name,
+        "updated_at": entry.get("updated_at"),
+        "missing": pdf_info is None,
+        "score": score,
+        "file_info": pdf_info,
+    }
+
+
+def _build_pair_insights(mpf_name: str, pdf_info: Dict[str, Any] | None) -> Dict[str, Any]:
+    mpf_norm = _normalize_name(mpf_name)
+    mpf_tokens = mpf_norm.split()
+    pdf_name = pdf_info.get("filename") if pdf_info else ""
+    pdf_norm = _normalize_name(pdf_name) if pdf_name else ""
+    pdf_tokens = pdf_norm.split() if pdf_norm else []
+    shared = sorted(set(mpf_tokens) & set(pdf_tokens))
+    token_overlap = len(shared) / max(len(set(mpf_tokens) | set(pdf_tokens)), 1)
+    sequence_ratio = _sequence_ratio(mpf_norm, pdf_norm) if pdf_norm else None
+    return {
+        "mpf_normalized": mpf_norm,
+        "mpf_tokens": mpf_tokens,
+        "pdf_normalized": pdf_norm,
+        "pdf_tokens": pdf_tokens,
+        "shared_tokens": shared,
+        "token_overlap": token_overlap,
+        "sequence_ratio": sequence_ratio,
     }

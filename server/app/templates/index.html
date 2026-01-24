@@ -144,6 +144,36 @@
         display: block;
         margin-top: 0.15rem;
       }
+      .sample-table .inline-select {
+        margin-top: 0.35rem;
+      }
+      .sample-table select,
+      .sample-table button {
+        font-size: 0.85rem;
+      }
+      .sample-table button {
+        padding: 4px 8px;
+        border-radius: 6px;
+        border: 1px solid #cbd5f5;
+        background: #f8fafc;
+        cursor: pointer;
+      }
+      .sample-table button:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+      .badge.info {
+        background: #e0f2fe;
+        color: #0369a1;
+      }
+      .pair-insights {
+        font-size: 0.8rem;
+        color: #475569;
+      }
+      .pair-insights code {
+        font-family: "SFMono-Regular", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+      }
     </style>
   </head>
   <body>
@@ -170,6 +200,7 @@
             <th>Sheet</th>
             <th>Parts</th>
             <th>Diagnostics</th>
+            <th>Pair Details</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -269,6 +300,38 @@
       });
 
       loadSampleMatches();
+
+      samplesBody.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (target.dataset.action !== "save-match") return;
+        const selectId = target.dataset.select;
+        const selectEl = selectId ? document.getElementById(selectId) : null;
+        if (!(selectEl instanceof HTMLSelectElement)) return;
+        const mpfFilename = selectEl.dataset.mpf;
+        if (!mpfFilename) return;
+        const pdfFilename = selectEl.value || null;
+        target.setAttribute("disabled", "disabled");
+        try {
+          const response = await fetch("/samples/matches", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              mpf_filename: mpfFilename,
+              pdf_filename: pdfFilename,
+            }),
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(detail || "Unable to save match");
+          }
+          await loadSampleMatches();
+        } catch (err) {
+          samplesStatus.textContent = `Match save failed: ${err.message}`;
+        } finally {
+          target.removeAttribute("disabled");
+        }
+      });
 
       fileInput.addEventListener("change", () => {
         if (!fileInput.files.length) return;
@@ -372,19 +435,21 @@
         samplesStatus.textContent = `Loaded ${matches.length} MPF samples.`;
         samplesTable.classList.remove("hidden");
         const threshold = data.matches?.[0]?.match_threshold ?? 0.72;
+        const pdfOptions = data.pdfs || [];
         matches.forEach((match) => {
           const row = document.createElement("tr");
           const mpfLink = buildSampleLink("mpf", match.mpf?.filename);
           const mpfCell = match.mpf?.filename
             ? `<a href="${mpfLink}" target="_blank" rel="noopener">${match.mpf.filename}</a>`
             : "Unknown";
-          const pdfCell = buildPdfCell(match);
+          const pdfCell = buildPdfCell(match, pdfOptions);
           const score = match.match_score;
           const scoreText = score != null ? `${Math.round(score * 100)}%` : "--";
           const scoreBadge = score != null && score >= threshold ? "success" : "warning";
           const sheet = formatSheet(match.summary);
           const parts = match.summary?.parts ?? 0;
           const diagnostics = formatDiagnostics(match.summary);
+          const pairDetails = buildPairDetails(match);
           row.innerHTML = `
             <td>${mpfCell}<small>${match.job_id ?? ""}</small></td>
             <td>${pdfCell}</td>
@@ -392,6 +457,7 @@
             <td>${sheet}</td>
             <td>${parts}</td>
             <td>${diagnostics}</td>
+            <td>${pairDetails}</td>
           `;
           samplesBody.appendChild(row);
         });
@@ -402,15 +468,63 @@
         return `/samples/files/${kind}/${encodeURIComponent(filename)}`;
       }
 
-      function buildPdfCell(match) {
+      function buildPdfCell(match, pdfOptions) {
         if (match.pdf?.filename) {
           const pdfLink = buildSampleLink("pdfs", match.pdf.filename);
-          return `<a href="${pdfLink}" target="_blank" rel="noopener">${match.pdf.filename}</a>`;
+          const source = match.match_source === "manual" ? "Manual" : "Auto";
+          const score = match.match_score != null ? `${Math.round(match.match_score * 100)}%` : "--";
+          return `
+            <a href="${pdfLink}" target="_blank" rel="noopener">${match.pdf.filename}</a>
+            <small>Source: ${source} • Score: ${score}</small>
+            ${buildMatchSelector(match, pdfOptions)}
+          `;
         }
         const suggestions = (match.suggestions || [])
           .map((item) => `${item.filename} (${Math.round(item.score * 100)}%)`)
           .join(", ");
-        return `No PDF match${suggestions ? `<small>Suggestions: ${suggestions}</small>` : ""}`;
+        return `
+          No PDF match${suggestions ? `<small>Suggestions: ${suggestions}</small>` : ""}
+          ${buildMatchSelector(match, pdfOptions)}
+        `;
+      }
+
+      function buildMatchSelector(match, pdfOptions) {
+        if (!match.mpf?.filename) return "";
+        const selectId = `pdf-select-${match.mpf.filename}`.replace(/[^a-z0-9_-]/gi, "-");
+        const options = pdfOptions
+          .map((pdf) => {
+            const selected = match.pdf?.filename === pdf.filename ? "selected" : "";
+            return `<option value="${pdf.filename}" ${selected}>${pdf.filename}</option>`;
+          })
+          .join("");
+        return `
+          <div class="inline-select">
+            <label class="visually-hidden" for="${selectId}">Select PDF</label>
+            <select id="${selectId}" data-mpf="${match.mpf.filename}">
+              <option value="">Clear match</option>
+              ${options}
+            </select>
+            <button type="button" data-action="save-match" data-select="${selectId}">Save</button>
+          </div>
+        `;
+      }
+
+      function buildPairDetails(match) {
+        const insights = match.pair_insights || {};
+        const shared = (insights.shared_tokens || []).join(", ");
+        const tokenOverlap = insights.token_overlap != null ? `${Math.round(insights.token_overlap * 100)}%` : "--";
+        const sequenceRatio = insights.sequence_ratio != null ? `${Math.round(insights.sequence_ratio * 100)}%` : "--";
+        const pdfTokens = (insights.pdf_tokens || []).join(", ");
+        return `
+          <div class="pair-insights">
+            <div><span class="badge info">Tokens</span> MPF: <code>${insights.mpf_normalized || ""}</code></div>
+            <div>PDF: <code>${insights.pdf_normalized || ""}</code></div>
+            <div>Shared: ${shared || "--"}</div>
+            <div>Token overlap: ${tokenOverlap}</div>
+            <div>Sequence similarity: ${sequenceRatio}</div>
+            ${pdfTokens ? `<div>PDF tokens: ${pdfTokens}</div>` : ""}
+          </div>
+        `;
       }
 
       function formatSheet(summary) {

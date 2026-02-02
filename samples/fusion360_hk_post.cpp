@@ -103,18 +103,38 @@ class HkPostProcessor {
         << ")\n";
     out << "HKPIE(0,0,0)\n";
     out << "HKLEA(0,0,0)\n";
+    last_x_ = op.cut.lead_target.x;
+    last_y_ = op.cut.lead_target.y;
   }
 
   void emit_first_cut_move(std::ostream& out) { out << "HKCUT(0,0,0)\n"; }
 
   void emit_motion(std::ostream& out, const Motion& motion) {
+    const bool is_arc = (motion.cmd == "G2" || motion.cmd == "G3");
+    const bool has_arc_offsets = motion.i.has_value() || motion.j.has_value();
+    const std::string cmd = (is_arc && !has_arc_offsets) ? "G1" : motion.cmd;
     std::ostringstream line;
-    line << motion.cmd;
-    append_axis(line, 'X', motion.x);
-    append_axis(line, 'Y', motion.y);
-    append_axis(line, 'I', motion.i);
-    append_axis(line, 'J', motion.j);
+    line << cmd;
+    std::optional<double> actual_x = motion.x;
+    std::optional<double> actual_y = motion.y;
+    if (cmd == "G1") {
+      actual_x = ensure_axis_value(motion.x, last_x_);
+      actual_y = ensure_axis_value(motion.y, last_y_);
+      append_axis(line, 'X', actual_x);
+      append_axis(line, 'Y', actual_y);
+    } else {
+      append_axis(line, 'X', motion.x);
+      append_axis(line, 'Y', motion.y);
+      append_axis(line, 'I', motion.i);
+      append_axis(line, 'J', motion.j);
+    }
     out << line.str() << "\n";
+    if (actual_x.has_value()) {
+      last_x_ = actual_x;
+    }
+    if (actual_y.has_value()) {
+      last_y_ = actual_y;
+    }
   }
 
   void end_section(std::ostream& out) {
@@ -130,6 +150,8 @@ class HkPostProcessor {
  private:
   ProgramConfig config_{};
   MaterialMap technology_map_{};
+  std::optional<double> last_x_{};
+  std::optional<double> last_y_{};
 
   int resolve_tech(const std::string& op_type) const {
     const auto& material = config_.material_name;
@@ -169,6 +191,14 @@ class HkPostProcessor {
                           const std::optional<double>& value) {
     if (!value.has_value()) return;
     line << " " << axis << fmt(*value);
+  }
+
+  static std::optional<double> ensure_axis_value(
+      const std::optional<double>& value,
+      const std::optional<double>& fallback) {
+    if (value.has_value()) return value;
+    if (fallback.has_value()) return fallback;
+    return 0.0;
   }
 };
 

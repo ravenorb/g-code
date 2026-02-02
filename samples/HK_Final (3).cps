@@ -255,12 +255,36 @@ function resolveHKTypeFlag(points, forceType) {
   return signedArea(points) < 0 ? 1 : 0;
 }
 
-function renderMotion(m) {
-  var parts = [m.cmd];
-  if (m.x !== undefined) parts.push(xOutput.format(m.x));
-  if (m.y !== undefined) parts.push(yOutput.format(m.y));
-  if (m.i !== undefined) parts.push(iOutput.format(m.i));
-  if (m.j !== undefined) parts.push(jOutput.format(m.j));
+function ensureAxisValue(value, fallback) {
+  if (value !== undefined) return value;
+  if (fallback !== undefined) return fallback;
+  return 0;
+}
+
+function renderMotion(m, state) {
+  var cmd = m.cmd;
+  if ((cmd === "G2" || cmd === "G3") && m.i === undefined && m.j === undefined) {
+    cmd = "G1";
+  }
+
+  var parts = [cmd];
+  var xValue = m.x;
+  var yValue = m.y;
+
+  if (cmd === "G1") {
+    xValue = ensureAxisValue(m.x, state.lastX);
+    yValue = ensureAxisValue(m.y, state.lastY);
+  }
+
+  if (xValue !== undefined) parts.push(xOutput.format(xValue));
+  if (yValue !== undefined) parts.push(yOutput.format(yValue));
+  if (cmd !== "G1") {
+    if (m.i !== undefined) parts.push(iOutput.format(m.i));
+    if (m.j !== undefined) parts.push(jOutput.format(m.j));
+  }
+
+  state.lastX = xValue;
+  state.lastY = yValue;
   return parts.join(" ");
 }
 
@@ -365,9 +389,10 @@ function onSectionEnd() {
   blockLines.push("HKPIE(0,0,0)");
   blockLines.push("HKLEA(0,0,0)");
 
+  var motionState = { lastX: leadTarget.x, lastY: leadTarget.y };
   var cutStart = cur.firstCutIndex >= 0 ? cur.firstCutIndex : cur.motions.length;
   for (var i = 0; i < cutStart; i++) {
-    blockLines.push(renderMotion(cur.motions[i]));
+    blockLines.push(renderMotion(cur.motions[i], motionState));
   }
 
   var whenPlacement = (properties.whenPlacement.value || properties.whenPlacement || "beforeLastCut").toString().toLowerCase();
@@ -378,7 +403,7 @@ function onSectionEnd() {
       if (j === cur.motions.length - 1 && whenPlacement === "beforelastcut") {
         blockLines.push("WHEN ($AC_TIME>0.005)AND($R71<$R72)AND($R3==1)AND($R60==1) DO $A_DBB[10]=1");
       }
-      blockLines.push(renderMotion(cur.motions[j]));
+      blockLines.push(renderMotion(cur.motions[j], motionState));
     }
     if (whenPlacement === "end") {
       blockLines.push("WHEN ($AC_TIME>0.005)AND($R71<$R72)AND($R3==1)AND($R60==1) DO $A_DBB[10]=1");

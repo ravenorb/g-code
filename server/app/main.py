@@ -1152,6 +1152,9 @@ def _build_absolute_part_contours(
             contour_block = extract_part_contour_block(raw_lines, part.part_line, contour_index)
             local_points = _build_contour_points_from_block(contour_block)
             if not local_points:
+                # Keep placeholder entries so contour indexes remain aligned with
+                # the original part contour numbering.
+                absolute_contours.append([])
                 continue
             absolute_contours.append([(point[0] + anchor_x, point[1] + anchor_y) for point in local_points])
         contours_by_part[part.part_number] = absolute_contours

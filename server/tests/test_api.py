@@ -173,8 +173,8 @@ async def test_cut_order_program_renumbers_parts(client):
 async def test_index_and_match_pages_are_available(client):
     index_resp = await client.get("/")
     assert index_resp.status_code == 200
-    assert "Uploaded Files" in index_resp.text
+    assert "Uploaded MPF Files" in index_resp.text
 
     match_resp = await client.get("/match")
     assert match_resp.status_code == 200
-    assert "HK Parser Upload" in match_resp.text
+    assert "Sample Library" in match_resp.text

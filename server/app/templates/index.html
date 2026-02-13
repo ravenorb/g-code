@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Uploaded Jobs</title>
+    <title>Uploaded MPF Index</title>
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -16,7 +16,6 @@
         border: 1px solid #e2e8f0;
         border-radius: 8px;
         padding: 1rem;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
       }
       ul {
         margin: 0.5rem 0 0;
@@ -25,11 +24,6 @@
       li {
         margin-bottom: 0.45rem;
       }
-      .meta {
-        color: #64748b;
-        font-size: 0.85rem;
-        margin-left: 0.3rem;
-      }
       .top-link {
         display: inline-block;
         margin-bottom: 1rem;
@@ -37,53 +31,46 @@
     </style>
   </head>
   <body>
-    <h1>Uploaded Files</h1>
-    <a class="top-link" href="/match">Open Matching + Upload UI</a>
+    <h1>Uploaded MPF Files</h1>
+    <a class="top-link" href="/match">Open Sample Library</a>
     <div class="card">
-      <p id="status">Loading jobs...</p>
-      <ul id="job-list"></ul>
+      <p id="status">Scanning data directory...</p>
+      <ul id="file-list"></ul>
     </div>
 
     <script>
       const status = document.getElementById("status");
-      const list = document.getElementById("job-list");
+      const list = document.getElementById("file-list");
 
-      async function loadJobs() {
+      async function loadFiles() {
         try {
-          const response = await fetch("/jobs");
+          const response = await fetch("/data-files");
           if (!response.ok) {
-            throw new Error("Unable to load uploaded jobs");
+            throw new Error("Unable to load data directory index");
           }
-          const jobs = await response.json();
+          const files = await response.json();
           list.innerHTML = "";
-          if (!jobs.length) {
-            status.textContent = "No uploaded files found.";
+          if (!files.length) {
+            status.textContent = "No uploaded MPF files found.";
             return;
           }
 
-          jobs
-            .sort((a, b) => (b.uploadedAt || "").localeCompare(a.uploadedAt || ""))
-            .forEach((job) => {
-              const li = document.createElement("li");
-              const link = document.createElement("a");
-              link.href = `/match?job_id=${encodeURIComponent(job.jobId)}`;
-              link.textContent = job.originalFile || job.jobId;
-              li.appendChild(link);
+          files.forEach((entry) => {
+            const li = document.createElement("li");
+            const link = document.createElement("a");
+            link.href = `/jobs/${encodeURIComponent(entry.jobId)}`;
+            link.textContent = entry.filename;
+            li.appendChild(link);
+            list.appendChild(li);
+          });
 
-              const meta = document.createElement("span");
-              meta.className = "meta";
-              meta.textContent = `(${job.jobId}${job.uploadedAt ? ` • ${job.uploadedAt}` : ""})`;
-              li.appendChild(meta);
-              list.appendChild(li);
-            });
-
-          status.textContent = `Loaded ${jobs.length} uploaded file(s).`;
+          status.textContent = `Found ${files.length} MPF file(s).`;
         } catch (error) {
           status.textContent = `Error: ${error.message}`;
         }
       }
 
-      loadJobs();
+      loadFiles();
     </script>
   </body>
 </html>

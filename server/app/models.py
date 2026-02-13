@@ -64,6 +64,10 @@ class PartDetailModel(PartSummaryModel):
         default_factory=list,
         description="Plot contours with labels for the selected part.",
     )
+    auto_extra_contours: List[str] = Field(
+        default_factory=list,
+        description="Automatically detected neighboring contours included in the preview and program.",
+    )
 
 
 class SheetSetupModel(BaseModel):

@@ -30,27 +30,6 @@
         width: 100%;
         max-width: 960px;
       }
-      .sheet-layout {
-        display: flex;
-        gap: 1rem;
-        align-items: flex-start;
-      }
-      .sheet-wrap {
-        flex: 1 1 auto;
-        min-width: 0;
-      }
-      .cut-order-frame {
-        width: 220px;
-        flex: 0 0 220px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-        background: #f8fafc;
-        padding: 0.6rem;
-        max-height: 540px;
-        overflow-y: auto;
-        position: sticky;
-        top: 1rem;
-      }
       .code-box {
         background: #0f172a;
         color: #e2e8f0;
@@ -68,37 +47,19 @@
       }
       .order-list {
         margin: 0.5rem 0 0;
-        padding-left: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 0.4rem;
+        padding-left: 1.25rem;
       }
       .order-item {
-        list-style: none;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #f8fafc;
+        margin-bottom: 0.45rem;
+        padding: 0.5rem 0.65rem;
         cursor: grab;
-        width: fit-content;
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
+        list-style-position: inside;
       }
       .order-item.dragging {
         opacity: 0.45;
-      }
-      .order-chip {
-        border: 1px solid #94a3b8;
-        border-radius: 999px;
-        background: #ffffff;
-        color: #0f172a;
-        font-weight: 600;
-        font-size: 0.9rem;
-        padding: 0.3rem 0.55rem;
-        min-width: 0;
-      }
-      .order-position {
-        color: #475569;
-        font-size: 0.85rem;
-        min-width: 1.5rem;
-        text-align: right;
       }
       button {
         padding: 0.4rem 0.75rem;
@@ -127,25 +88,20 @@
       <div class="row">
         <label><input id="show-skeleton" type="checkbox" checked /> Preview part skeleton</label>
       </div>
-      <p class="muted">Click anywhere inside a part to open part detail.</p>
+      <p class="muted">Click a part marker on the sheet to open part detail.</p>
       <p id="sheet-info"></p>
-      <div class="sheet-layout">
-        <div class="sheet-wrap">
-          <canvas id="sheet-canvas" class="sheet-canvas" width="960" height="540"></canvas>
-        </div>
-        <aside class="cut-order-frame">
-          <h3>Cut Order</h3>
-          <div class="row">
-            <button id="save-order" type="button" disabled>Save</button>
-            <button id="reset-order" type="button">Reset</button>
-          </div>
-          <div class="row" style="margin-top:0.4rem">
-            <button id="download-order" type="button">Download</button>
-          </div>
-          <p id="order-status" class="muted"></p>
-          <ol id="cut-order" class="order-list"></ol>
-        </aside>
+      <canvas id="sheet-canvas" class="sheet-canvas" width="960" height="540"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Cut Order</h2>
+      <div class="row">
+        <button id="save-order" type="button" disabled>Save Part Order</button>
+        <button id="reset-order" type="button">Reset</button>
+        <button id="download-order" type="button">Download Reordered Program</button>
       </div>
+      <p id="order-status" class="muted"></p>
+      <ol id="cut-order" class="order-list"></ol>
     </div>
 
     <div class="card">
@@ -269,19 +225,6 @@
         });
       }
 
-      function pointInPolygon(point, polygon) {
-        let inside = false;
-        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
-          const xi = Number(polygon[i][0] || 0);
-          const yi = Number(polygon[i][1] || 0);
-          const xj = Number(polygon[j][0] || 0);
-          const yj = Number(polygon[j][1] || 0);
-          const intersects = yi > point.y !== yj > point.y && point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || Number.EPSILON) + xi;
-          if (intersects) inside = !inside;
-        }
-        return inside;
-      }
-
       function renderSheet(job, orderedParts) {
         const ctx = sheetCanvas.getContext("2d");
         const setup = job.setup || {};
@@ -338,19 +281,6 @@
           const y = Number(part.anchor_y || 0);
           const px = originX + x * scale;
           const py = originY + y * scale;
-          const regions = [];
-
-          if (Array.isArray(part.plot_points) && part.plot_points.length) {
-            part.plot_points.forEach((contour) => {
-              if (!Array.isArray(contour) || !contour.length || !contourIsClosed(contour)) return;
-              regions.push(
-                contour.map((point) => [
-                  originX + (x + Number(point[0] || 0)) * scale,
-                  originY + (y + Number(point[1] || 0)) * scale,
-                ])
-              );
-            });
-          }
 
           if (showSkeleton && Array.isArray(part.plot_points) && part.plot_points.length) {
             ctx.strokeStyle = "#2563eb";
@@ -370,29 +300,19 @@
               });
               if (isClosedContour) {
                 ctx.closePath();
-                regions.push(
-                  contour.map((point) => [
-                    originX + (x + Number(point[0] || 0)) * scale,
-                    originY + (y + Number(point[1] || 0)) * scale,
-                  ])
-                );
               }
               ctx.stroke();
             });
           }
 
-          clickableParts.push({ partNumber: part.part_number, regions, x: px, y: py });
+          clickableParts.push({ partNumber: part.part_number, x: px, y: py });
           ctx.fillStyle = "#2563eb";
           ctx.beginPath();
           ctx.arc(px, py, 4, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = "#0f172a";
           ctx.font = "12px Arial";
-          const labelW = ctx.measureText(label).width;
-          ctx.fillStyle = "rgba(255,255,255,0.85)";
-          ctx.fillRect(px - labelW / 2 - 4, py - 10, labelW + 8, 14);
-          ctx.fillStyle = "#0f172a";
-          ctx.fillText(label, px - labelW / 2, py);
+          ctx.fillText(String(index + 1), px + 6, py - 6);
         });
 
         const mode = showSkeleton ? "skeleton" : "anchors";
@@ -407,22 +327,14 @@
           li.className = "order-item";
           li.setAttribute("draggable", "true");
           li.dataset.partNumber = String(part.part_number);
-          li.title = `Part ${part.part_number} • line ${part.part_line ?? "?"} • contours ${part.contours ?? "?"} • position ${index + 1}`;
-
-          const position = document.createElement("span");
-          position.className = "order-position";
-          position.textContent = `${index + 1}.`;
-
-          const chip = document.createElement("button");
-          chip.type = "button";
-          chip.className = "order-chip";
-          chip.textContent = String(part.part_number);
-          chip.addEventListener("click", () => {
-            window.location.href = `/jobs/${encodeURIComponent(jobId)}/parts/${part.part_number}/view`;
-          });
-
-          li.appendChild(position);
-          li.appendChild(chip);
+          const partLink = document.createElement("a");
+          partLink.href = `/jobs/${encodeURIComponent(jobId)}/parts/${part.part_number}/view`;
+          partLink.textContent = `Part ${part.part_number}`;
+          li.appendChild(partLink);
+          const suffix = document.createTextNode(
+            ` • line ${part.part_line ?? "?"} • contours ${part.contours ?? "?"} • position ${index + 1}`
+          );
+          li.appendChild(suffix);
           cutOrderList.appendChild(li);
         });
 
@@ -525,16 +437,10 @@
         const rect = sheetCanvas.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
-        const hit = clickableParts.find((part) => part.regions.some((polygon) => pointInPolygon({ x, y }, polygon)));
-        if (hit) {
-          window.location.href = `/jobs/${encodeURIComponent(jobId)}/parts/${hit.partNumber}/view`;
-          return;
-        }
-
         let closest = null;
         let bestDist = Number.POSITIVE_INFINITY;
         clickableParts.forEach((part) => {
-          const dist = Math.hypot((part.x || 0) - x, (part.y || 0) - y);
+          const dist = Math.hypot(part.x - x, part.y - y);
           if (dist < bestDist) {
             bestDist = dist;
             closest = part;

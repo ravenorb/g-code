@@ -167,3 +167,14 @@ async def test_cut_order_program_renumbers_parts(client):
     assert "N20000 HKOST(0.0,0.0,0.0,20001,1,0,0,0)" in text
     assert "N10001 HKSTR(1,1,2,2,0,0,0,0)" in text
     assert "N20001 HKSTR(1,1,1,1,0,0,0,0)" in text
+
+
+@pytest.mark.anyio
+async def test_index_and_match_pages_are_available(client):
+    index_resp = await client.get("/")
+    assert index_resp.status_code == 200
+    assert "Uploaded Files" in index_resp.text
+
+    match_resp = await client.get("/match")
+    assert match_resp.status_code == 200
+    assert "HK Parser Upload" in match_resp.text

@@ -76,6 +76,7 @@ logger = logging.getLogger(__name__)
 
 CONTOUR_CLOSE_EPSILON = 0.001
 COMMON_NEIGHBOR_DISTANCE_TOLERANCE = 0.1
+OPEN_PROFILE_SEARCH_MARGIN = 0.5
 MAX_EXTRA_CONTOURS = 5
 
 app.add_middleware(
@@ -1110,11 +1111,16 @@ def _detect_common_neighbor_contours(
     absolute_contours = _build_absolute_part_contours(parts, raw_lines)
     target_contours = absolute_contours.get(target_part.part_number, [])
     target_boundary_segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    target_open_profiles: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float, float, float]]] = []
     for contour in target_contours:
         if _contour_is_closed(contour):
             target_boundary_segments.extend(_contour_segments(contour))
+            continue
+        closure = _open_contour_closure_profile(contour)
+        if closure is not None:
+            target_open_profiles.append(closure)
 
-    if not target_boundary_segments:
+    if not target_boundary_segments and not target_open_profiles:
         return []
 
     refs: list[ExtraContourRef] = []
@@ -1123,9 +1129,9 @@ def _detect_common_neighbor_contours(
             continue
         candidate_contours = absolute_contours.get(candidate.part_number, [])
         for contour_index, contour in enumerate(candidate_contours, start=1):
-            if _contour_is_closed(contour):
-                continue
-            if not _contour_is_common_neighbor(contour, target_boundary_segments):
+            is_common_neighbor = bool(target_boundary_segments) and _contour_is_common_neighbor(contour, target_boundary_segments)
+            closes_open_profile = bool(target_open_profiles) and _contour_closes_open_profile(contour, target_open_profiles)
+            if not is_common_neighbor and not closes_open_profile:
                 continue
             refs.append(
                 ExtraContourRef(
@@ -1229,6 +1235,60 @@ def _contour_is_common_neighbor(
             if _segment_to_segment_distance(segment[0], segment[1], boundary[0], boundary[1]) <= COMMON_NEIGHBOR_DISTANCE_TOLERANCE:
                 return True
     return False
+
+
+def _open_contour_closure_profile(
+    contour: list[tuple[float, float]],
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float, float, float]] | None:
+    if len(contour) < 2:
+        return None
+    start = contour[0]
+    end = contour[-1]
+    min_x = min(point[0] for point in contour) - OPEN_PROFILE_SEARCH_MARGIN
+    max_x = max(point[0] for point in contour) + OPEN_PROFILE_SEARCH_MARGIN
+    min_y = min(point[1] for point in contour) - OPEN_PROFILE_SEARCH_MARGIN
+    max_y = max(point[1] for point in contour) + OPEN_PROFILE_SEARCH_MARGIN
+    return start, end, (min_x, min_y, max_x, max_y)
+
+
+def _contour_closes_open_profile(
+    contour: list[tuple[float, float]],
+    open_profiles: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float, float, float]]],
+) -> bool:
+    segments = _contour_segments(contour)
+    if not segments:
+        return False
+    for start, end, bounds in open_profiles:
+        for seg_start, seg_end in segments:
+            if not (_point_in_bounds(seg_start, bounds) and _point_in_bounds(seg_end, bounds)):
+                continue
+            if _is_closing_segment(seg_start, seg_end, start, end):
+                return True
+    return False
+
+
+def _point_in_bounds(point: tuple[float, float], bounds: tuple[float, float, float, float]) -> bool:
+    min_x, min_y, max_x, max_y = bounds
+    return min_x <= point[0] <= max_x and min_y <= point[1] <= max_y
+
+
+def _is_closing_segment(
+    seg_start: tuple[float, float],
+    seg_end: tuple[float, float],
+    open_start: tuple[float, float],
+    open_end: tuple[float, float],
+) -> bool:
+    return (
+        _distance(seg_start, open_start) <= COMMON_NEIGHBOR_DISTANCE_TOLERANCE
+        and _distance(seg_end, open_end) <= COMMON_NEIGHBOR_DISTANCE_TOLERANCE
+    ) or (
+        _distance(seg_start, open_end) <= COMMON_NEIGHBOR_DISTANCE_TOLERANCE
+        and _distance(seg_end, open_start) <= COMMON_NEIGHBOR_DISTANCE_TOLERANCE
+    )
+
+
+def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
 
 def _contour_is_closed(contour: list[tuple[float, float]]) -> bool:

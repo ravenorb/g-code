@@ -405,7 +405,12 @@ async def part_detail(
         if not block:
             continue
         extra_points = build_part_plot_points(block)
-        if not extra_points:
+        points_for_preview: list[tuple[float, float]]
+        if extra_points and extra_points[0]:
+            points_for_preview = extra_points[0]
+        else:
+            points_for_preview = _build_contour_points_from_block(block)
+        if not points_for_preview:
             continue
         target_anchor_x = part.anchor_x or 0.0
         target_anchor_y = part.anchor_y or 0.0
@@ -416,7 +421,7 @@ async def part_detail(
         plot_contours.append(
             ContourPlotModel(
                 label=f"{part_number_ref}.{contour_index}",
-                points=_translate_contour_points(extra_points[0], offset_x, offset_y),
+                points=_translate_contour_points(points_for_preview, offset_x, offset_y),
             )
         )
     contour_labels = [str(idx + 1) for idx in range(part.contours)] + [f"{ref.part_number}.{ref.contour_index}" for ref in extra_contour_refs]
@@ -800,11 +805,13 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               item.setAttribute("draggable", "true");
               item.dataset.label = contour.label;
               const displayLabel = contour.displayLabel ?? contour.label;
+              const isBorrowedContour = typeof contour.label === "string" && contour.label.includes(".");
               const suffix =
                 contour.label && displayLabel && contour.label !== displayLabel
                   ? ` (was ${{contour.label}})`
                   : "";
-              item.textContent = `Contour ${{displayLabel}}${{suffix}}`;
+              const borrowedSuffix = isBorrowedContour ? " • borrowed common cut" : "";
+              item.textContent = `Contour ${{displayLabel}}${{suffix}}${{borrowedSuffix}}`;
               contourOrderList.appendChild(item);
             }});
             enableDragSorting(contourOrderList, () => {{
@@ -931,8 +938,18 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             ctx.lineWidth = 2;
             ctx.font = "13px Arial";
             ctx.fillStyle = "#0f172a";
+            let borrowedContourCount = 0;
             normalizedContours.forEach((contour, contourIndex) => {{
               if (!contour.points.length) return;
+              const isBorrowedContour = typeof contour.label === "string" && contour.label.includes(".");
+              if (isBorrowedContour) {{
+                borrowedContourCount += 1;
+                ctx.strokeStyle = "#ea580c";
+                ctx.setLineDash([8, 4]);
+              }} else {{
+                ctx.strokeStyle = "#2563eb";
+                ctx.setLineDash([]);
+              }}
               ctx.beginPath();
               contour.points.forEach((point, index) => {{
                 const transformed = transformPoint(point);
@@ -960,11 +977,13 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
               const label = contour.displayLabel || contour.label || String(contourIndex + 1);
               ctx.fillText(label, labelX + 4, labelY - 4);
             }});
+            ctx.setLineDash([]);
             plotInfo.textContent =
               "Distance: X " +
               rangeX +
               ", Y " +
-              rangeY;
+              rangeY +
+              ` • Borrowed common-cut contours: ${{borrowedContourCount}}`;
           }}
 
           function syncInputsFromUrl() {{

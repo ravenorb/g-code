@@ -296,6 +296,7 @@ async def test_part_detail_auto_includes_neighbor_contours_in_preview_and_progra
     assert detail_resp.status_code == 200
     detail = detail_resp.json()
     assert "2.1" in detail["auto_extra_contours"]
+    assert any(contour.get("label") == "2.1" for contour in detail["plot_contours"])
     joined = "\n".join(detail["part_program"])
     assert "HKSTR(1,1,0.05,0.5,0,0,0,0)" in joined
 

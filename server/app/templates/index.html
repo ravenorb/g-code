@@ -115,9 +115,9 @@
           }
 
           const body = await response.json();
-          uploadStatus.textContent = `Uploaded ${file.name} as job ${body.job_id}.`;
+          uploadStatus.textContent = `Uploaded ${file.name} as job ${body.job_id}. Redirecting...`;
           uploadForm.reset();
-          await loadFiles();
+          window.location.href = `/jobs/${encodeURIComponent(body.job_id)}`;
         } catch (error) {
           uploadStatus.textContent = `Error: ${error.message}`;
         }

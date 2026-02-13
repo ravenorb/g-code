@@ -267,6 +267,44 @@ async def test_part_plot_points_exclude_rapid_positioning_moves(client):
 
 
 @pytest.mark.anyio
+async def test_part_detail_auto_includes_neighbor_contours_in_preview_and_program(client):
+    payload = (
+        "N10000 HKOST(0.0,0.0,0.0,10001,1,0,0,0)\n"
+        "HKPPP\n"
+        "N20000 HKOST(0.0,0.0,0.0,20001,1,0,0,0)\n"
+        "HKPPP\n"
+        "N10001 HKSTR(1,1,0,0,0,0,0,0)\n"
+        "G1 X0 Y0\n"
+        "G1 X2 Y0\n"
+        "G1 X2 Y2\n"
+        "G1 X0 Y2\n"
+        "G1 X0 Y0\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
+        "N20001 HKSTR(1,1,0.05,0.5,0,0,0,0)\n"
+        "G1 X0.05 Y0.5\n"
+        "G1 X0.05 Y1.5\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
+    ).encode()
+
+    upload_resp = await client.post("/upload", files={"file": ("job.mpf", io.BytesIO(payload), "text/plain")})
+    assert upload_resp.status_code == 200
+    job_id = upload_resp.json()["job_id"]
+
+    detail_resp = await client.get(f"/jobs/{job_id}/parts/1")
+    assert detail_resp.status_code == 200
+    detail = detail_resp.json()
+    assert "2.1" in detail["auto_extra_contours"]
+    joined = "\n".join(detail["part_program"])
+    assert "HKSTR(1,1,0.05,0.5,0,0,0,0)" in joined
+
+    download_resp = await client.get(f"/jobs/{job_id}/parts/1/program")
+    assert download_resp.status_code == 200
+    assert "HKSTR(1,1,0.05,0.5,0,0,0,0)" in download_resp.text
+
+
+@pytest.mark.anyio
 async def test_part_view_back_link_returns_to_job_sheet(client):
     payload = (
         "N10000 HKOST(0.0,0.0,0.0,10001,1,0,0,0)\n"

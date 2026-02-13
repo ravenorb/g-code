@@ -169,11 +169,29 @@ async def test_cut_order_program_renumbers_parts(client):
     assert "N20001 HKSTR(1,1,1,1,0,0,0,0)" in text
 
 
+
+
+@pytest.mark.anyio
+async def test_data_files_lists_uppercase_mpf_extension(client):
+    payload = b"G1 X0 Y0\n"
+    upload_resp = await client.post(
+        "/upload",
+        files={"file": ("UPPER.MPF", io.BytesIO(payload), "text/plain")},
+    )
+    assert upload_resp.status_code == 200
+
+    data_files_resp = await client.get("/data-files")
+    assert data_files_resp.status_code == 200
+    files = data_files_resp.json()
+    assert any(item["filename"] == "UPPER.MPF" for item in files)
+
 @pytest.mark.anyio
 async def test_index_and_match_pages_are_available(client):
     index_resp = await client.get("/")
     assert index_resp.status_code == 200
     assert "Uploaded MPF Files" in index_resp.text
+    assert 'id="upload-form"' in index_resp.text
+    assert 'window.location.href = `/jobs/${encodeURIComponent(body.job_id)}`;' in index_resp.text
 
     match_resp = await client.get("/match")
     assert match_resp.status_code == 200

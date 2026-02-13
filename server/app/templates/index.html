@@ -28,17 +28,39 @@
         display: inline-block;
         margin-bottom: 1rem;
       }
+      .upload-form {
+        margin-bottom: 1rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      .muted {
+        color: #475569;
+        font-size: 0.9rem;
+      }
     </style>
   </head>
   <body>
     <h1>Uploaded MPF Files</h1>
     <a class="top-link" href="/match">Open Sample Library</a>
     <div class="card">
+      <form id="upload-form" class="upload-form">
+        <label>
+          MPF File
+          <input id="file-input" type="file" name="file" accept=".mpf,.txt,.gcode" required />
+        </label>
+        <button type="submit">Upload</button>
+      </form>
+      <p id="upload-status" class="muted">Upload a file to add it to this index.</p>
       <p id="status">Scanning data directory...</p>
       <ul id="file-list"></ul>
     </div>
 
     <script>
+      const uploadForm = document.getElementById("upload-form");
+      const uploadStatus = document.getElementById("upload-status");
+      const fileInput = document.getElementById("file-input");
       const status = document.getElementById("status");
       const list = document.getElementById("file-list");
 
@@ -69,6 +91,37 @@
           status.textContent = `Error: ${error.message}`;
         }
       }
+
+      uploadForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+          uploadStatus.textContent = "Choose a file before uploading.";
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+        uploadStatus.textContent = "Uploading...";
+
+        try {
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error("Upload failed");
+          }
+
+          const body = await response.json();
+          uploadStatus.textContent = `Uploaded ${file.name} as job ${body.job_id}. Redirecting...`;
+          uploadForm.reset();
+          window.location.href = `/jobs/${encodeURIComponent(body.job_id)}`;
+        } catch (error) {
+          uploadStatus.textContent = `Error: ${error.message}`;
+        }
+      });
 
       loadFiles();
     </script>

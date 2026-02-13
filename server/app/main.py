@@ -115,7 +115,9 @@ async def list_data_files(config: Annotated[ServiceConfig, Depends(get_config)])
     root = Path(config.storage_root)
     if not root.exists():
         return results
-    for file_path in sorted(root.glob("**/*.mpf")):
+    for file_path in sorted(root.glob("**/*")):
+        if not file_path.is_file() or file_path.suffix.lower() != ".mpf":
+            continue
         job_id = file_path.parent.name
         results.append({"jobId": job_id, "filename": file_path.name})
     return results

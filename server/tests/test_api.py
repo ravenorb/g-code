@@ -240,3 +240,46 @@ async def test_part_detail_and_download_apply_contour_order_and_extra_contours(c
     text = download_resp.text
     assert "HKSTR(1,1,2,2,0,0,0,0)" in text
     assert text.find("HKSTR(1,1,2,2,0,0,0,0)") < text.find("HKSTR(1,1,1,1,0,0,0,0)")
+
+
+@pytest.mark.anyio
+async def test_part_plot_points_exclude_rapid_positioning_moves(client):
+    payload = (
+        "N10000 HKOST(0.0,0.0,0.0,10001,1,0,0,0)\n"
+        "N10001 HKSTR(1,1,0,0,0,0,0,0)\n"
+        "G0 X5 Y5\n"
+        "HKCUT(0,0,0)\n"
+        "G1 X10 Y10\n"
+        "G0 X20 Y20\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
+    ).encode()
+
+    upload_resp = await client.post("/upload", files={"file": ("job.mpf", io.BytesIO(payload), "text/plain")})
+    assert upload_resp.status_code == 200
+    job_id = upload_resp.json()["job_id"]
+
+    detail_resp = await client.get(f"/jobs/{job_id}/parts/1")
+    assert detail_resp.status_code == 200
+    plot_points = detail_resp.json()["plot_points"]
+    assert plot_points
+    assert [20.0, 20.0] not in plot_points[0]
+
+
+@pytest.mark.anyio
+async def test_part_view_back_link_returns_to_job_sheet(client):
+    payload = (
+        "N10000 HKOST(0.0,0.0,0.0,10001,1,0,0,0)\n"
+        "N10001 HKSTR(1,1,0,0,0,0,0,0)\n"
+        "G1 X0 Y0\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
+    ).encode()
+
+    upload_resp = await client.post("/upload", files={"file": ("job.mpf", io.BytesIO(payload), "text/plain")})
+    assert upload_resp.status_code == 200
+    job_id = upload_resp.json()["job_id"]
+
+    part_view_resp = await client.get(f"/jobs/{job_id}/parts/1/view")
+    assert part_view_resp.status_code == 200
+    assert f'href="/jobs/{job_id}" class="action-button">Back to Sheet View</a>' in part_view_resp.text

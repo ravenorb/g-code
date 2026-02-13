@@ -621,7 +621,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
         <nav class="row">
           <button id="reset-contour-order" class="action-button" type="button">Reset</button>
           <button id="save-contour-order" class="action-button" type="button" disabled>Save Cut Order</button>
-          <a href="/?job_id={job_id}" class="action-button">Back to Sheet View</a>
+          <a href="/jobs/{job_id}" class="action-button">Back to Sheet View</a>
         </nav>
         <p id="contour-order-status" class="order-status"></p>
         <h1>Part {part_number}</h1>

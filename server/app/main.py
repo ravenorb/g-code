@@ -87,12 +87,21 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index() -> HTMLResponse:
-    template_path = Path(__file__).parent / "templates" / "index.html"
+def _render_template(name: str) -> HTMLResponse:
+    template_path = Path(__file__).parent / "templates" / name
     if not template_path.exists():
         raise HTTPException(status_code=500, detail="Template not found")
     return HTMLResponse(template_path.read_text(encoding="utf-8"))
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index() -> HTMLResponse:
+    return _render_template("index.html")
+
+
+@app.get("/match", response_class=HTMLResponse)
+async def match_page() -> HTMLResponse:
+    return _render_template("match.html")
 
 
 @app.post("/upload", response_model=UploadResponse)

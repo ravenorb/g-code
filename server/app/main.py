@@ -1161,32 +1161,40 @@ def _build_absolute_part_contours(
 
 
 def _build_contour_points_from_block(contour_block: list[str]) -> list[tuple[float, float]]:
+    contours = build_part_plot_points(contour_block)
+    if contours:
+        return contours[0]
+
     points: list[tuple[float, float]] = []
     current_x: float | None = None
     current_y: float | None = None
-
     for raw_line in contour_block:
         line = raw_line.strip()
         if not line:
             continue
         if "HKSTR(" in line.upper():
-            parsed = _parse_hkstr_start_xy(line)
-            if parsed is not None:
-                current_x, current_y = parsed
-                points.append((current_x, current_y))
+            match = re.search(r"HKSTR\(([^)]*)\)", line, flags=re.IGNORECASE)
+            if not match:
+                continue
+            args = [item.strip() for item in match.group(1).split(",")]
+            if len(args) < 4:
+                continue
+            try:
+                current_x, current_y = float(args[2]), float(args[3])
+            except ValueError:
+                continue
+            points.append((current_x, current_y))
             continue
-
         if not line.upper().startswith("G"):
             continue
-
-        maybe_x = _extract_axis_value(line, "X")
-        maybe_y = _extract_axis_value(line, "Y")
-        if maybe_x is None and maybe_y is None:
+        match_x = re.search(r"X\s*([-+]?\d*\.?\d+)", line, flags=re.IGNORECASE)
+        match_y = re.search(r"Y\s*([-+]?\d*\.?\d+)", line, flags=re.IGNORECASE)
+        if match_x is None and match_y is None:
             continue
-        if maybe_x is not None:
-            current_x = maybe_x
-        if maybe_y is not None:
-            current_y = maybe_y
+        if match_x is not None:
+            current_x = float(match_x.group(1))
+        if match_y is not None:
+            current_y = float(match_y.group(1))
         if current_x is None or current_y is None:
             continue
         points.append((current_x, current_y))
@@ -1194,27 +1202,6 @@ def _build_contour_points_from_block(contour_block: list[str]) -> list[tuple[flo
     return points
 
 
-def _parse_hkstr_start_xy(line: str) -> tuple[float, float] | None:
-    match = re.search(r"HKSTR\(([^)]*)\)", line, flags=re.IGNORECASE)
-    if not match:
-        return None
-    args = [item.strip() for item in match.group(1).split(",")]
-    if len(args) < 4:
-        return None
-    try:
-        return float(args[2]), float(args[3])
-    except ValueError:
-        return None
-
-
-def _extract_axis_value(line: str, axis: str) -> float | None:
-    match = re.search(rf"{axis}\s*([-+]?\d*\.?\d+)", line, flags=re.IGNORECASE)
-    if not match:
-        return None
-    try:
-        return float(match.group(1))
-    except ValueError:
-        return None
 def _contour_is_common_neighbor(
     contour: list[tuple[float, float]],
     target_boundary_segments: list[tuple[tuple[float, float], tuple[float, float]]],

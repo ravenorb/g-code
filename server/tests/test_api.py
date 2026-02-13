@@ -196,3 +196,47 @@ async def test_index_and_match_pages_are_available(client):
     match_resp = await client.get("/match")
     assert match_resp.status_code == 200
     assert "Sample Library" in match_resp.text
+
+
+@pytest.mark.anyio
+async def test_part_detail_and_download_apply_contour_order_and_extra_contours(client):
+    payload = (
+        "N10000 HKOST(0.0,0.0,0.0,10001,1,0,0,0)\n"
+        "HKPPP\n"
+        "N20000 HKOST(5.0,5.0,0.0,20001,1,0,0,0)\n"
+        "HKPPP\n"
+        "N10001 HKSTR(1,1,0,0,0,0,0,0)\n"
+        "G1 X0 Y0\n"
+        "HKSTO(0,0,0)\n"
+        "N10002 HKSTR(1,1,1,1,0,0,0,0)\n"
+        "G1 X1 Y1\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
+        "N20001 HKSTR(1,1,2,2,0,0,0,0)\n"
+        "G1 X2 Y2\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
+    ).encode()
+
+    upload_resp = await client.post("/upload", files={"file": ("job.mpf", io.BytesIO(payload), "text/plain")})
+    assert upload_resp.status_code == 200
+    job_id = upload_resp.json()["job_id"]
+
+    detail_resp = await client.get(
+        f"/jobs/{job_id}/parts/1",
+        params={"extra_contours": "2.1", "contour_order": "2.1,2,1"},
+    )
+    assert detail_resp.status_code == 200
+    detail = detail_resp.json()
+    joined = "\n".join(detail["part_program"])
+    assert "HKSTR(1,1,2,2,0,0,0,0)" in joined
+    assert joined.find("HKSTR(1,1,2,2,0,0,0,0)") < joined.find("HKSTR(1,1,1,1,0,0,0,0)")
+
+    download_resp = await client.get(
+        f"/jobs/{job_id}/parts/1/program",
+        params={"extra_contours": "2.1", "contour_order": "2.1,2,1"},
+    )
+    assert download_resp.status_code == 200
+    text = download_resp.text
+    assert "HKSTR(1,1,2,2,0,0,0,0)" in text
+    assert text.find("HKSTR(1,1,2,2,0,0,0,0)") < text.find("HKSTR(1,1,1,1,0,0,0,0)")

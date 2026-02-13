@@ -363,6 +363,7 @@ async def part_detail(
     job_id: str,
     part_number: int,
     extra_contours: Optional[str] = None,
+    contour_order: Optional[str] = None,
     release_manager: ReleaseManager = Depends(get_release_manager),
 ) -> PartDetailModel:
     validation = release_manager.get_validation(job_id)
@@ -409,12 +410,16 @@ async def part_detail(
                 points=_translate_contour_points(extra_points[0], offset_x, offset_y),
             )
         )
+    contour_labels = [str(idx + 1) for idx in range(part.contours)] + [f"{ref.part_number}.{ref.contour_index}" for ref in extra_contour_refs]
+    contour_order_values = _parse_contour_order(contour_order, contour_labels)
     content = "\n".join(validation.raw_lines)
     profile_block = extract_part_profile_program(content, part.part_line).lines
     part_program = extract_part_program(
         content,
         part.part_line,
         extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
+        contour_order=contour_order_values,
+        contour_labels=contour_labels,
     ).lines
     return PartDetailModel(
         part_number=part.part_number,
@@ -438,6 +443,7 @@ async def part_program_download(
     job_id: str,
     part_number: int,
     extra_contours: Optional[str] = None,
+    contour_order: Optional[str] = None,
     release_manager: ReleaseManager = Depends(get_release_manager),
     storage_manager: StorageManager = Depends(get_storage_manager),
 ) -> Response:
@@ -450,11 +456,15 @@ async def part_program_download(
         raise HTTPException(status_code=404, detail="Part not found")
 
     extra_contour_refs = _parse_extra_contours(extra_contours, validation.parts)
+    contour_labels = [str(idx + 1) for idx in range(part.contours)] + [f"{ref.part_number}.{ref.contour_index}" for ref in extra_contour_refs]
+    contour_order_values = _parse_contour_order(contour_order, contour_labels)
     content = "\n".join(validation.raw_lines)
     part_program = extract_part_program(
         content,
         part.part_line,
         extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
+        contour_order=contour_order_values,
+        contour_labels=contour_labels,
     ).lines
     meta = storage_manager.load_job(job_id) or {}
     original_name = meta.get("originalFile", f"{job_id}.mpf")
@@ -635,10 +645,10 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           <p id="contour-status"></p>
         </div>
         <div class="card">
-          <h2>Contour Cut Order (Beta)</h2>
+          <h2>Contour Cut Order</h2>
           <p class="order-hint">
             Drag contours to reorder the cut sequence, then click save. The order is stored locally in your browser
-            for this part and does not yet change the generated program output.
+            for this part. Saved order updates the preview and the generated standalone part program.
           </p>
           <ol id="contour-order" class="order-list"></ol>
         </div>
@@ -677,15 +687,20 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             return contourInputs.map((input) => input.value.trim()).filter(Boolean);
           }}
 
-          function buildQueryString(entries) {{
-            if (!entries.length) return "";
+          function buildQueryString(entries, contourOrder = contourState.pendingOrder) {{
             const query = new URLSearchParams();
-            query.set("extra_contours", entries.join(","));
-            return `?${{query.toString()}}`;
+            if (entries.length) {{
+              query.set("extra_contours", entries.join(","));
+            }}
+            if (Array.isArray(contourOrder) && contourOrder.length) {{
+              query.set("contour_order", contourOrder.join(","));
+            }}
+            const queryString = query.toString();
+            return queryString ? `?${{queryString}}` : "";
           }}
 
-          function updateDownloadLink(entries) {{
-            const queryString = buildQueryString(entries);
+          function updateDownloadLink(entries, contourOrder = contourState.pendingOrder) {{
+            const queryString = buildQueryString(entries, contourOrder);
             downloadLink.href = `/jobs/{job_id}/parts/{part_number}/program${{queryString}}`;
           }}
 
@@ -823,8 +838,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           }}
 
           async function loadPart(entries = getExtraContours()) {{
-            const queryString = buildQueryString(entries);
-            updateDownloadLink(entries);
+            const queryString = buildQueryString(entries, contourState.pendingOrder);
             const resp = await fetch(`/jobs/{job_id}/parts/{part_number}${{queryString}}`);
             if (!resp.ok) {{
               plotInfo.textContent = "Unable to load part details.";
@@ -838,12 +852,15 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             contourState = {{
               normalizedContours,
               savedOrder,
-              pendingOrder: savedOrder,
+              pendingOrder: [...savedOrder],
             }};
             const orderedContours = applyContourOrder(normalizedContours, savedOrder);
             renderPlot(orderedContours);
+            updateDownloadLink(entries, savedOrder);
+            updateDownloadLink(entries, savedOrder);
             renderContourOrder(orderedContours, (order) => {{
               renderPlot(applyContourOrder(normalizedContours, order));
+              updateDownloadLink(entries, order);
             }});
             updateSaveState();
             contourStatus.textContent = entries.length
@@ -927,15 +944,23 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           function syncInputsFromUrl() {{
             const params = new URLSearchParams(window.location.search);
             const raw = params.get("extra_contours");
-            if (!raw) return;
-            raw.split(",").slice(0, contourInputs.length).forEach((value, index) => {{
-              contourInputs[index].value = value.trim();
-            }});
+            if (raw) {{
+              raw.split(",").slice(0, contourInputs.length).forEach((value, index) => {{
+                contourInputs[index].value = value.trim();
+              }});
+            }}
+            const contourOrderRaw = params.get("contour_order");
+            if (contourOrderRaw) {{
+              contourState.pendingOrder = contourOrderRaw
+                .split(",")
+                .map((entry) => entry.trim())
+                .filter(Boolean);
+            }}
           }}
 
           applyContours.addEventListener("click", () => {{
             const entries = getExtraContours();
-            const queryString = buildQueryString(entries);
+            const queryString = buildQueryString(entries, contourState.pendingOrder);
             const url = new URL(window.location.href);
             url.search = queryString ? queryString.slice(1) : "";
             window.history.replaceState({{}}, "", url);
@@ -946,7 +971,13 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             if (!contourState.pendingOrder.length) return;
             saveContourOrder(contourState.pendingOrder);
             contourState.savedOrder = [...contourState.pendingOrder];
-            updateSaveState();
+            const entries = getExtraContours();
+            const queryString = buildQueryString(entries, contourState.pendingOrder);
+            const url = new URL(window.location.href);
+            url.search = queryString ? queryString.slice(1) : "";
+            window.history.replaceState({{}}, "", url);
+            updateDownloadLink(entries, contourState.pendingOrder);
+            loadPart(entries);
           }});
 
           resetContourOrderButton.addEventListener("click", () => {{
@@ -1013,6 +1044,23 @@ def _parse_extra_contours(raw: Optional[str], parts: list[PartSummaryModel]) -> 
         if len(refs) >= 5:
             break
     return refs
+
+
+
+
+def _parse_contour_order(raw: Optional[str], allowed_labels: list[str]) -> list[str]:
+    if not raw:
+        return []
+    allowed = {label.strip() for label in allowed_labels if str(label).strip()}
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for token in raw.split(','):
+        label = token.strip()
+        if not label or label not in allowed or label in seen:
+            continue
+        ordered.append(label)
+        seen.add(label)
+    return ordered
 
 
 def _build_display_lines(result) -> list[ParsedLineModel]:

@@ -23,6 +23,7 @@
         margin-bottom: 1rem;
       }
       .sheet-canvas {
+        cursor: pointer;
         border: 1px solid #cbd5e1;
         border-radius: 6px;
         background: #fff;
@@ -87,6 +88,7 @@
       <div class="row">
         <label><input id="show-skeleton" type="checkbox" checked /> Preview part skeleton</label>
       </div>
+      <p class="muted">Click a part marker on the sheet to open part detail.</p>
       <p id="sheet-info"></p>
       <canvas id="sheet-canvas" class="sheet-canvas" width="960" height="540"></canvas>
     </div>
@@ -120,6 +122,7 @@
       const downloadOrderButton = document.getElementById("download-order");
       let jobData = null;
       let pendingOrder = [];
+      let clickableParts = [];
 
       function getJobId() {
         const parts = window.location.pathname.split("/").filter(Boolean);
@@ -234,6 +237,32 @@
         ctx.strokeRect(originX, originY, drawW, drawH);
 
         const showSkeleton = showSkeletonCheckbox.checked;
+        clickableParts = [];
+
+        if (showSkeleton) {
+          ctx.save();
+          ctx.fillStyle = "rgba(148, 163, 184, 0.25)";
+          ctx.beginPath();
+          ctx.rect(originX, originY, drawW, drawH);
+          orderedParts.forEach((part) => {
+            const x = Number(part.anchor_x || 0);
+            const y = Number(part.anchor_y || 0);
+            if (!Array.isArray(part.plot_points)) return;
+            part.plot_points.forEach((contour) => {
+              if (!Array.isArray(contour) || !contour.length) return;
+              ctx.moveTo(originX + (x + Number(contour[0][0] || 0)) * scale, originY + (y + Number(contour[0][1] || 0)) * scale);
+              contour.forEach((point) => {
+                const cx = originX + (x + Number(point[0] || 0)) * scale;
+                const cy = originY + (y + Number(point[1] || 0)) * scale;
+                ctx.lineTo(cx, cy);
+              });
+              ctx.closePath();
+            });
+          });
+          ctx.fill("evenodd");
+          ctx.restore();
+        }
+
         orderedParts.forEach((part, index) => {
           const x = Number(part.anchor_x || 0);
           const y = Number(part.anchor_y || 0);
@@ -260,9 +289,10 @@
             });
           }
 
+          clickableParts.push({ partNumber: part.part_number, x: px, y: py });
           ctx.fillStyle = "#2563eb";
           ctx.beginPath();
-          ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+          ctx.arc(px, py, 4, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = "#0f172a";
           ctx.font = "12px Arial";
@@ -382,6 +412,27 @@
       showSkeletonCheckbox.addEventListener("change", () => {
         if (!jobData) return;
         renderSheet(jobData, reorderParts(jobData.parts || [], pendingOrder));
+      });
+
+
+      sheetCanvas.addEventListener("click", (event) => {
+        const jobId = getJobId();
+        if (!jobId || !clickableParts.length) return;
+        const rect = sheetCanvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        let closest = null;
+        let bestDist = Number.POSITIVE_INFINITY;
+        clickableParts.forEach((part) => {
+          const dist = Math.hypot(part.x - x, part.y - y);
+          if (dist < bestDist) {
+            bestDist = dist;
+            closest = part;
+          }
+        });
+        if (closest && bestDist <= 18) {
+          window.location.href = `/jobs/${encodeURIComponent(jobId)}/parts/${closest.partNumber}/view`;
+        }
       });
 
       loadJob();

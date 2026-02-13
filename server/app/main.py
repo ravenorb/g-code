@@ -104,6 +104,23 @@ async def match_page() -> HTMLResponse:
     return _render_template("match.html")
 
 
+@app.get("/jobs/{job_id}", response_class=HTMLResponse)
+async def job_page(job_id: str) -> HTMLResponse:
+    return _render_template("job.html")
+
+
+@app.get("/data-files")
+async def list_data_files(config: Annotated[ServiceConfig, Depends(get_config)]) -> list[dict[str, str]]:
+    results: list[dict[str, str]] = []
+    root = Path(config.storage_root)
+    if not root.exists():
+        return results
+    for file_path in sorted(root.glob("**/*.mpf")):
+        job_id = file_path.parent.name
+        results.append({"jobId": job_id, "filename": file_path.name})
+    return results
+
+
 @app.post("/upload", response_model=UploadResponse)
 async def upload_file(
     file: UploadFile = File(...),

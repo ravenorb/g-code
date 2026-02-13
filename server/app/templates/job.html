@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Job Detail</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      .card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      .top-link {
+        display: inline-block;
+        margin-bottom: 1rem;
+      }
+      .sheet-canvas {
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        width: 100%;
+        max-width: 960px;
+      }
+      .code-box {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 0.75rem;
+        border-radius: 6px;
+        overflow-y: auto;
+        max-height: 360px;
+        white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Job Detail</h1>
+    <a class="top-link" href="/">Back to Uploaded MPF Index</a>
+    <p id="status">Loading job details...</p>
+
+    <div class="card">
+      <h2>Sheet Layout</h2>
+      <p id="sheet-info"></p>
+      <canvas id="sheet-canvas" class="sheet-canvas" width="960" height="540"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Cut Order</h2>
+      <ol id="cut-order"></ol>
+    </div>
+
+    <div class="card">
+      <h2>Original File Code</h2>
+      <pre id="raw-code" class="code-box"></pre>
+    </div>
+
+    <script>
+      const statusEl = document.getElementById("status");
+      const sheetInfo = document.getElementById("sheet-info");
+      const sheetCanvas = document.getElementById("sheet-canvas");
+      const cutOrderList = document.getElementById("cut-order");
+      const rawCode = document.getElementById("raw-code");
+
+      function getJobId() {
+        const parts = window.location.pathname.split("/").filter(Boolean);
+        return parts.length >= 2 ? decodeURIComponent(parts[1]) : null;
+      }
+
+      function renderSheet(job) {
+        const ctx = sheetCanvas.getContext("2d");
+        const setup = job.setup || {};
+        const sheetX = Number(setup.sheetX || 0);
+        const sheetY = Number(setup.sheetY || 0);
+
+        ctx.clearRect(0, 0, sheetCanvas.width, sheetCanvas.height);
+        if (!sheetX || !sheetY) {
+          sheetInfo.textContent = "Sheet dimensions not found in file setup.";
+          return;
+        }
+
+        const margin = 20;
+        const availableW = sheetCanvas.width - margin * 2;
+        const availableH = sheetCanvas.height - margin * 2;
+        const scale = Math.min(availableW / sheetX, availableH / sheetY);
+        const drawW = sheetX * scale;
+        const drawH = sheetY * scale;
+        const originX = (sheetCanvas.width - drawW) / 2;
+        const originY = (sheetCanvas.height - drawH) / 2;
+
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(originX, originY, drawW, drawH);
+
+        (job.parts || []).forEach((part, index) => {
+          const x = Number(part.anchorX || 0);
+          const y = Number(part.anchorY || 0);
+          const px = originX + x * scale;
+          const py = originY + y * scale;
+          ctx.fillStyle = "#2563eb";
+          ctx.beginPath();
+          ctx.arc(px, py, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#0f172a";
+          ctx.fillText(String(index + 1), px + 6, py - 6);
+        });
+
+        sheetInfo.textContent = `Sheet: ${sheetX} x ${sheetY} • Parts: ${(job.parts || []).length}`;
+      }
+
+      async function loadJob() {
+        const jobId = getJobId();
+        if (!jobId) {
+          statusEl.textContent = "No job id found in URL.";
+          return;
+        }
+        try {
+          const response = await fetch(`/jobs/${encodeURIComponent(jobId)}/analysis`);
+          if (!response.ok) {
+            throw new Error("Unable to load job analysis");
+          }
+          const job = await response.json();
+          renderSheet(job);
+
+          cutOrderList.innerHTML = "";
+          (job.parts || []).forEach((part) => {
+            const li = document.createElement("li");
+            li.textContent = `Part ${part.partNumber ?? "?"} (line ${part.partLine ?? "?"})`;
+            cutOrderList.appendChild(li);
+          });
+
+          rawCode.textContent = Array.isArray(job.rawLines) ? job.rawLines.join("\n") : "";
+          statusEl.textContent = `Showing ${job.originalFile || jobId}`;
+        } catch (error) {
+          statusEl.textContent = `Error: ${error.message}`;
+        }
+      }
+
+      loadJob();
+    </script>
+  </body>
+</html>

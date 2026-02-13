@@ -266,7 +266,7 @@ def _build_contour_plot_points(lines: List[str]) -> List[tuple[float, float]]:
                 points.extend(arc_points)
             elif (next_x, next_y) != (current_x, current_y):
                 points.append((next_x, next_y))
-        elif cut_started and (current_x, current_y) != (next_x, next_y):
+        elif command not in {"G0", "G00"} and cut_started and (current_x, current_y) != (next_x, next_y):
             points.append((next_x, next_y))
 
         current_x, current_y = next_x, next_y

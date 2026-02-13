@@ -127,7 +127,7 @@
       <div class="row">
         <label><input id="show-skeleton" type="checkbox" checked /> Preview part skeleton</label>
       </div>
-      <p class="muted">Click a part marker on the sheet to open part detail.</p>
+      <p class="muted">Click anywhere inside a part to open part detail.</p>
       <p id="sheet-info"></p>
       <div class="sheet-layout">
         <div class="sheet-wrap">
@@ -370,6 +370,12 @@
               });
               if (isClosedContour) {
                 ctx.closePath();
+                regions.push(
+                  contour.map((point) => [
+                    originX + (x + Number(point[0] || 0)) * scale,
+                    originY + (y + Number(point[1] || 0)) * scale,
+                  ])
+                );
               }
               ctx.stroke();
             });
@@ -382,7 +388,11 @@
           ctx.fill();
           ctx.fillStyle = "#0f172a";
           ctx.font = "12px Arial";
-          ctx.fillText(String(index + 1), px + 6, py - 6);
+          const labelW = ctx.measureText(label).width;
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          ctx.fillRect(px - labelW / 2 - 4, py - 10, labelW + 8, 14);
+          ctx.fillStyle = "#0f172a";
+          ctx.fillText(label, px - labelW / 2, py);
         });
 
         const mode = showSkeleton ? "skeleton" : "anchors";

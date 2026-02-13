@@ -77,6 +77,9 @@
         list-style: none;
         cursor: grab;
         width: fit-content;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
       }
       .order-item.dragging {
         opacity: 0.45;
@@ -90,6 +93,12 @@
         font-size: 0.9rem;
         padding: 0.3rem 0.55rem;
         min-width: 0;
+      }
+      .order-position {
+        color: #475569;
+        font-size: 0.85rem;
+        min-width: 1.5rem;
+        text-align: right;
       }
       button {
         padding: 0.4rem 0.75rem;
@@ -273,35 +282,6 @@
         return inside;
       }
 
-      function getPartLabelPoint(part, originX, originY, scale) {
-        const x = Number(part.anchor_x || 0);
-        const y = Number(part.anchor_y || 0);
-        if (!Array.isArray(part.plot_points) || !part.plot_points.length) {
-          return { px: originX + x * scale, py: originY + y * scale };
-        }
-
-        let minX = Number.POSITIVE_INFINITY;
-        let minY = Number.POSITIVE_INFINITY;
-        let maxX = Number.NEGATIVE_INFINITY;
-        let maxY = Number.NEGATIVE_INFINITY;
-        part.plot_points.forEach((contour) => {
-          if (!Array.isArray(contour) || !contour.length || !contourIsClosed(contour)) return;
-          contour.forEach((point) => {
-            const cx = originX + (x + Number(point[0] || 0)) * scale;
-            const cy = originY + (y + Number(point[1] || 0)) * scale;
-            minX = Math.min(minX, cx);
-            minY = Math.min(minY, cy);
-            maxX = Math.max(maxX, cx);
-            maxY = Math.max(maxY, cy);
-          });
-        });
-
-        if (!Number.isFinite(minX)) {
-          return { px: originX + x * scale, py: originY + y * scale };
-        }
-        return { px: (minX + maxX) / 2, py: (minY + maxY) / 2 };
-      }
-
       function renderSheet(job, orderedParts) {
         const ctx = sheetCanvas.getContext("2d");
         const setup = job.setup || {};
@@ -356,7 +336,21 @@
         orderedParts.forEach((part, index) => {
           const x = Number(part.anchor_x || 0);
           const y = Number(part.anchor_y || 0);
+          const px = originX + x * scale;
+          const py = originY + y * scale;
           const regions = [];
+
+          if (Array.isArray(part.plot_points) && part.plot_points.length) {
+            part.plot_points.forEach((contour) => {
+              if (!Array.isArray(contour) || !contour.length || !contourIsClosed(contour)) return;
+              regions.push(
+                contour.map((point) => [
+                  originX + (x + Number(point[0] || 0)) * scale,
+                  originY + (y + Number(point[1] || 0)) * scale,
+                ])
+              );
+            });
+          }
 
           if (showSkeleton && Array.isArray(part.plot_points) && part.plot_points.length) {
             ctx.strokeStyle = "#2563eb";
@@ -387,9 +381,12 @@
             });
           }
 
-          clickableParts.push({ partNumber: part.part_number, regions });
-          const { px, py } = getPartLabelPoint(part, originX, originY, scale);
-          const label = String(part.part_number);
+          clickableParts.push({ partNumber: part.part_number, regions, x: px, y: py });
+          ctx.fillStyle = "#2563eb";
+          ctx.beginPath();
+          ctx.arc(px, py, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#0f172a";
           ctx.font = "12px Arial";
           const labelW = ctx.measureText(label).width;
           ctx.fillStyle = "rgba(255,255,255,0.85)";
@@ -411,6 +408,11 @@
           li.setAttribute("draggable", "true");
           li.dataset.partNumber = String(part.part_number);
           li.title = `Part ${part.part_number} • line ${part.part_line ?? "?"} • contours ${part.contours ?? "?"} • position ${index + 1}`;
+
+          const position = document.createElement("span");
+          position.className = "order-position";
+          position.textContent = `${index + 1}.`;
+
           const chip = document.createElement("button");
           chip.type = "button";
           chip.className = "order-chip";
@@ -418,6 +420,8 @@
           chip.addEventListener("click", () => {
             window.location.href = `/jobs/${encodeURIComponent(jobId)}/parts/${part.part_number}/view`;
           });
+
+          li.appendChild(position);
           li.appendChild(chip);
           cutOrderList.appendChild(li);
         });
@@ -524,6 +528,20 @@
         const hit = clickableParts.find((part) => part.regions.some((polygon) => pointInPolygon({ x, y }, polygon)));
         if (hit) {
           window.location.href = `/jobs/${encodeURIComponent(jobId)}/parts/${hit.partNumber}/view`;
+          return;
+        }
+
+        let closest = null;
+        let bestDist = Number.POSITIVE_INFINITY;
+        clickableParts.forEach((part) => {
+          const dist = Math.hypot((part.x || 0) - x, (part.y || 0) - y);
+          if (dist < bestDist) {
+            bestDist = dist;
+            closest = part;
+          }
+        });
+        if (closest && bestDist <= 18) {
+          window.location.href = `/jobs/${encodeURIComponent(jobId)}/parts/${closest.partNumber}/view`;
         }
       });
 

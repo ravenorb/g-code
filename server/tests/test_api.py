@@ -305,6 +305,42 @@ async def test_part_detail_auto_includes_neighbor_contours_in_preview_and_progra
 
 
 @pytest.mark.anyio
+async def test_part_detail_auto_neighbor_preserves_original_contour_indexes_for_plot(client):
+    payload = (
+        "N10000 HKOST(0.0,0.0,0.0,10001,1,0,0,0)\n"
+        "HKPPP\n"
+        "N20000 HKOST(0.0,0.0,0.0,20001,1,0,0,0)\n"
+        "HKPPP\n"
+        "N10001 HKSTR(1,1,0,0,0,0,0,0)\n"
+        "G1 X0 Y0\n"
+        "G1 X2 Y0\n"
+        "G1 X2 Y2\n"
+        "G1 X0 Y2\n"
+        "G1 X0 Y0\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
+        "N20001 HKSTR(1,1,0,0,0,0,0,0)\n"
+        "HKSTO(0,0,0)\n"
+        "N20002 HKSTR(1,1,0.05,0.5,0,0,0,0)\n"
+        "HKCUT(0,0,0)\n"
+        "G1 X0.05 Y0.5\n"
+        "G1 X0.05 Y1.5\n"
+        "HKSTO(0,0,0)\n"
+        "HKPED(0,0,0)\n"
+    ).encode()
+
+    upload_resp = await client.post("/upload", files={"file": ("job.mpf", io.BytesIO(payload), "text/plain")})
+    assert upload_resp.status_code == 200
+    job_id = upload_resp.json()["job_id"]
+
+    detail_resp = await client.get(f"/jobs/{job_id}/parts/1")
+    assert detail_resp.status_code == 200
+    detail = detail_resp.json()
+    assert "2.2" in detail["auto_extra_contours"]
+    assert any(contour["label"] == "2.2" for contour in detail["plot_contours"])
+
+
+@pytest.mark.anyio
 async def test_part_view_back_link_returns_to_job_sheet(client):
     payload = (
         "N10000 HKOST(0.0,0.0,0.0,10001,1,0,0,0)\n"

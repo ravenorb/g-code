@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -31,8 +31,6 @@ class StoredFile:
     meta_path: Path
     metadata: Dict[str, Any]
     uploaded_at: datetime
-    link_meta_path: Optional[Path] = None
-    linked_files: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class StorageManager:
@@ -50,7 +48,6 @@ class StorageManager:
         description: str,
         validation: ValidationResult,
         setup: Optional[dict] = None,
-        linked_files: Optional[List[Dict[str, Any]]] = None,
     ) -> StoredFile:
         uploaded_at = datetime.now(timezone.utc)
         job_dir = self.root / job_id
@@ -61,15 +58,6 @@ class StorageManager:
         stored_path.write_bytes(content)
 
         meta_path = job_dir / f"{Path(safe_name).stem}.meta.json"
-        linked_assets = self._persist_linked_files(job_dir, linked_files or [])
-        link_meta_path = self._write_link_metadata(
-            job_dir=job_dir,
-            job_id=job_id,
-            program_name=safe_name,
-            program_path=stored_path,
-            linked_files=linked_assets,
-            uploaded_at=uploaded_at,
-        )
         metadata = self._build_metadata(
             job_id=job_id,
             filename=safe_name,
@@ -79,10 +67,6 @@ class StorageManager:
             stored_path=stored_path,
             uploaded_at=uploaded_at,
         )
-        if linked_assets:
-            metadata["linkedFiles"] = linked_assets
-        if link_meta_path:
-            metadata["linkMetaPath"] = str(link_meta_path)
         meta_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
         return StoredFile(
             job_id=job_id,
@@ -91,8 +75,6 @@ class StorageManager:
             meta_path=meta_path,
             metadata=metadata,
             uploaded_at=uploaded_at,
-            link_meta_path=link_meta_path,
-            linked_files=linked_assets,
         )
 
     def list_jobs(self) -> List[Dict[str, Any]]:
@@ -200,45 +182,6 @@ class StorageManager:
             ],
             "setup": setup,
         }
-
-    def _persist_linked_files(self, job_dir: Path, linked_files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        persisted: List[Dict[str, Any]] = []
-        for linked_file in linked_files:
-            content = linked_file.get("content")
-            if not content:
-                continue
-            safe_name = _clean_filename(linked_file.get("filename") or "attachment")
-            stored_path = job_dir / safe_name
-            stored_path.write_bytes(content)
-            persisted.append(
-                {
-                    "filename": safe_name,
-                    "storedPath": str(stored_path),
-                    "mediaType": linked_file.get("media_type"),
-                }
-            )
-        return persisted
-
-    def _write_link_metadata(
-        self,
-        job_dir: Path,
-        job_id: str,
-        program_name: str,
-        program_path: Path,
-        linked_files: List[Dict[str, Any]],
-        uploaded_at: datetime,
-    ) -> Optional[Path]:
-        if not linked_files:
-            return None
-        meta_path = job_dir / f"{Path(program_name).stem}.link.json"
-        payload = {
-            "jobId": job_id,
-            "linkedAt": uploaded_at.isoformat(),
-            "program": {"filename": program_name, "storedPath": str(program_path)},
-            "linkedFiles": linked_files,
-        }
-        meta_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        return meta_path
 
 
 def extract_sheet_setup(lines: Iterable[str]) -> Dict[str, Any]:

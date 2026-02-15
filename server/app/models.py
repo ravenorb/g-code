@@ -64,10 +64,6 @@ class PartDetailModel(PartSummaryModel):
         default_factory=list,
         description="Plot contours with labels for the selected part.",
     )
-    auto_extra_contours: List[str] = Field(
-        default_factory=list,
-        description="Automatically detected neighboring contours included in the preview and program.",
-    )
 
 
 class SheetSetupModel(BaseModel):
@@ -106,8 +102,6 @@ class ValidateRequest(BaseModel):
 class UploadResponse(ValidationResponse):
     stored_path: Optional[str] = Field(default=None, description="Filesystem path of the uploaded program.")
     meta_path: Optional[str] = Field(default=None, description="Path to the generated metadata file.")
-    link_meta_path: Optional[str] = Field(default=None, description="Path to the link metadata file.")
-    linked_files: Optional[List[Any]] = Field(default=None, description="Linked asset records for the upload.")
     description: Optional[str] = Field(default=None, description="User-provided description of the upload.")
     uploaded_at: Optional[datetime] = Field(default=None, description="Timestamp of upload.")
 

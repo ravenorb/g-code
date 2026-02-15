@@ -1,0 +1,37 @@
+{
+  "jobId": "6ff118d9781c",
+  "originalFile": "job.mpf",
+  "storedPath": "storage/6ff118d9781c/job.mpf",
+  "uploadedAt": "2026-02-15T21:47:37.506529+00:00",
+  "description": "",
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "lines": 8
+  },
+  "parts": [
+    {
+      "partNumber": 1,
+      "partLine": 10000,
+      "hkostLine": 1,
+      "profileLine": 10001,
+      "startLine": 5,
+      "endLine": 6,
+      "contours": 1,
+      "anchorX": 0.0,
+      "anchorY": 0.0
+    },
+    {
+      "partNumber": 2,
+      "partLine": 20000,
+      "hkostLine": 3,
+      "profileLine": 20001,
+      "startLine": 7,
+      "endLine": 8,
+      "contours": 1,
+      "anchorX": 1.0,
+      "anchorY": 1.0
+    }
+  ],
+  "setup": {}
+}

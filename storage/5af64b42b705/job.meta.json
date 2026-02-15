@@ -1,0 +1,29 @@
+{
+  "jobId": "5af64b42b705",
+  "originalFile": "job.mpf",
+  "storedPath": "storage/5af64b42b705/job.mpf",
+  "uploadedAt": "2026-02-15T21:47:37.497701+00:00",
+  "description": "single part demo",
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "lines": 14
+  },
+  "parts": [
+    {
+      "partNumber": 1,
+      "partLine": 10000,
+      "hkostLine": 3,
+      "profileLine": 10001,
+      "startLine": 8,
+      "endLine": 15,
+      "contours": 1,
+      "anchorX": 0.3,
+      "anchorY": 0.26
+    }
+  ],
+  "setup": {
+    "sheetX": 21.5,
+    "sheetY": 6.2
+  }
+}

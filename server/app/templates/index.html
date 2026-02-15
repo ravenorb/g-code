@@ -145,7 +145,13 @@
 
     <form id="upload-form" class="visually-hidden">
       <label for="file">Select G-code file:</label>
-      <input type="file" id="file" name="file" accept=".gcode,.txt,.mpf,.nc,.tap" required />
+      <input
+        type="file"
+        id="file"
+        name="file"
+        accept=".gcode,.GCODE,.txt,.TXT,.mpf,.MPF,.nc,.NC,.tap,.TAP"
+        required
+      />
       <textarea id="description" name="description" rows="3"></textarea>
       <button type="submit">Upload & Validate</button>
     </form>

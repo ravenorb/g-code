@@ -928,8 +928,6 @@ def _parse_extra_contours(raw: Optional[str], parts: list[PartSummaryModel]) -> 
                 contour_index=contour_index,
             )
         )
-        if len(refs) >= 5:
-            break
     return refs
 
 

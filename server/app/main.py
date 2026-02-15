@@ -9,7 +9,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response
 from .config import DEFAULT_CONFIG, ServiceConfig
 from .diagnostics import ValidationService, hash_payload
 from .extract import build_reordered_program, extract_part_profile_program, extract_part_program
@@ -33,7 +33,6 @@ from .models import (
 )
 from .release import ReleaseManager
 from .parser import build_part_plot_points, extract_part_block, extract_part_contour_block, load_from_bytes
-from .samples import load_sample_index, save_match_override
 from .storage import StorageManager, extract_sheet_setup
 
 app = FastAPI(title="HK Parser Service", version="0.1.0")
@@ -74,10 +73,6 @@ def get_storage_manager(config: Annotated[ServiceConfig, Depends(get_config)]) -
 configure_logging(DEFAULT_CONFIG)
 logger = logging.getLogger(__name__)
 
-CONTOUR_CLOSE_EPSILON = 0.001
-COMMON_NEIGHBOR_DISTANCE_TOLERANCE = 0.1
-MAX_EXTRA_CONTOURS = 5
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -91,47 +86,18 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-def _render_template(name: str) -> HTMLResponse:
-    template_path = Path(__file__).parent / "templates" / name
+@app.get("/", response_class=HTMLResponse)
+async def index() -> HTMLResponse:
+    template_path = Path(__file__).parent / "templates" / "index.html"
     if not template_path.exists():
         raise HTTPException(status_code=500, detail="Template not found")
     return HTMLResponse(template_path.read_text(encoding="utf-8"))
-
-
-@app.get("/", response_class=HTMLResponse)
-async def index() -> HTMLResponse:
-    return _render_template("index.html")
-
-
-@app.get("/match", response_class=HTMLResponse)
-async def match_page() -> HTMLResponse:
-    return _render_template("match.html")
-
-
-@app.get("/jobs/{job_id}", response_class=HTMLResponse)
-async def job_page(job_id: str) -> HTMLResponse:
-    return _render_template("job.html")
-
-
-@app.get("/data-files")
-async def list_data_files(config: Annotated[ServiceConfig, Depends(get_config)]) -> list[dict[str, str]]:
-    results: list[dict[str, str]] = []
-    root = Path(config.storage_root)
-    if not root.exists():
-        return results
-    for file_path in sorted(root.glob("**/*")):
-        if not file_path.is_file() or file_path.suffix.lower() != ".mpf":
-            continue
-        job_id = file_path.parent.name
-        results.append({"jobId": job_id, "filename": file_path.name})
-    return results
 
 
 @app.post("/upload", response_model=UploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
     description: Annotated[Optional[str], Form()] = None,
-    attachment: Annotated[Optional[UploadFile], File()] = None,
     validator: ValidationService = Depends(get_validation_service),
     release_manager: ReleaseManager = Depends(get_release_manager),
     storage_manager: StorageManager = Depends(get_storage_manager),
@@ -139,18 +105,6 @@ async def upload_file(
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
-
-    linked_files = []
-    if attachment is not None:
-        attachment_content = await attachment.read()
-        if attachment_content:
-            linked_files.append(
-                {
-                    "filename": attachment.filename,
-                    "media_type": attachment.content_type,
-                    "content": attachment_content,
-                }
-            )
 
     job_id = hash_payload(content)[:12]
     lines = load_from_bytes(content)
@@ -164,7 +118,6 @@ async def upload_file(
         description=description or "",
         validation=result,
         setup=setup,
-        linked_files=linked_files,
     )
     logger.info("Upload validated for job %s with %d diagnostics", job_id, len(result.diagnostics))
     payload = _build_validation_payload(result, setup=setup)
@@ -172,8 +125,6 @@ async def upload_file(
         **payload,
         stored_path=str(stored.stored_path),
         meta_path=str(stored.meta_path),
-        link_meta_path=str(stored.link_meta_path) if stored.link_meta_path else None,
-        linked_files=stored.linked_files,
         description=description,
         uploaded_at=stored.uploaded_at,
     )
@@ -198,43 +149,6 @@ async def validate(
 async def list_jobs(storage_manager: StorageManager = Depends(get_storage_manager)) -> list[JobListing]:
     jobs = storage_manager.list_jobs()
     return [JobListing(**job) for job in jobs]
-
-
-@app.get("/samples")
-async def list_samples(
-    config: Annotated[ServiceConfig, Depends(get_config)],
-    validator: ValidationService = Depends(get_validation_service),
-) -> dict:
-    return load_sample_index(config=config, validator=validator)
-
-
-@app.post("/samples/matches")
-async def store_sample_match(
-    payload: dict,
-    config: Annotated[ServiceConfig, Depends(get_config)],
-) -> dict:
-    mpf_filename = payload.get("mpf_filename")
-    if not mpf_filename:
-        raise HTTPException(status_code=400, detail="mpf_filename is required")
-    pdf_filename = payload.get("pdf_filename")
-    updated = save_match_override(
-        config=config,
-        mpf_filename=str(mpf_filename),
-        pdf_filename=str(pdf_filename) if pdf_filename else None,
-    )
-    return {"status": "ok", "matches": updated.get("matches", {})}
-
-
-@app.get("/samples/files/{kind}/{filename}")
-async def sample_file(kind: str, filename: str) -> Response:
-    if kind not in {"mpf", "pdfs"}:
-        raise HTTPException(status_code=404, detail="Unknown sample category")
-    sample_root = Path(__file__).resolve().parents[2] / "samples"
-    safe_name = Path(filename).name
-    sample_path = sample_root / kind / safe_name
-    if not sample_path.exists():
-        raise HTTPException(status_code=404, detail="Sample file not found")
-    return FileResponse(sample_path)
 
 
 @app.get("/jobs/{job_id}/analysis", response_model=ValidationResponse)
@@ -367,7 +281,6 @@ async def part_detail(
     job_id: str,
     part_number: int,
     extra_contours: Optional[str] = None,
-    contour_order: Optional[str] = None,
     release_manager: ReleaseManager = Depends(get_release_manager),
 ) -> PartDetailModel:
     validation = release_manager.get_validation(job_id)
@@ -380,12 +293,7 @@ async def part_detail(
 
     contour_block = extract_part_block(validation.raw_lines, part.part_line)
     plot_points = build_part_plot_points(contour_block)
-    extra_contour_refs = _resolve_extra_contours(
-        raw=extra_contours,
-        parts=validation.parts,
-        raw_lines=validation.raw_lines,
-        target_part=part,
-    )
+    extra_contour_refs = _parse_extra_contours(extra_contours, validation.parts)
     extra_contour_blocks = []
     for ref in extra_contour_refs:
         block = extract_part_contour_block(validation.raw_lines, ref.part_line, ref.contour_index)
@@ -419,16 +327,12 @@ async def part_detail(
                 points=_translate_contour_points(extra_points[0], offset_x, offset_y),
             )
         )
-    contour_labels = [str(idx + 1) for idx in range(part.contours)] + [f"{ref.part_number}.{ref.contour_index}" for ref in extra_contour_refs]
-    contour_order_values = _parse_contour_order(contour_order, contour_labels)
     content = "\n".join(validation.raw_lines)
     profile_block = extract_part_profile_program(content, part.part_line).lines
     part_program = extract_part_program(
         content,
         part.part_line,
         extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
-        contour_order=contour_order_values,
-        contour_labels=contour_labels,
     ).lines
     return PartDetailModel(
         part_number=part.part_number,
@@ -444,11 +348,6 @@ async def part_detail(
         plot_points=[[list(point) for point in contour] for contour in plot_points],
         plot_contours=plot_contours,
         part_program=part_program,
-        auto_extra_contours=_detect_common_neighbor_contour_labels(
-            parts=validation.parts,
-            raw_lines=validation.raw_lines,
-            target_part=part,
-        ),
     )
 
 
@@ -457,7 +356,6 @@ async def part_program_download(
     job_id: str,
     part_number: int,
     extra_contours: Optional[str] = None,
-    contour_order: Optional[str] = None,
     release_manager: ReleaseManager = Depends(get_release_manager),
     storage_manager: StorageManager = Depends(get_storage_manager),
 ) -> Response:
@@ -469,21 +367,12 @@ async def part_program_download(
     if part is None:
         raise HTTPException(status_code=404, detail="Part not found")
 
-    extra_contour_refs = _resolve_extra_contours(
-        raw=extra_contours,
-        parts=validation.parts,
-        raw_lines=validation.raw_lines,
-        target_part=part,
-    )
-    contour_labels = [str(idx + 1) for idx in range(part.contours)] + [f"{ref.part_number}.{ref.contour_index}" for ref in extra_contour_refs]
-    contour_order_values = _parse_contour_order(contour_order, contour_labels)
+    extra_contour_refs = _parse_extra_contours(extra_contours, validation.parts)
     content = "\n".join(validation.raw_lines)
     part_program = extract_part_program(
         content,
         part.part_line,
         extra_contours=[(ref.part_line, ref.contour_index) for ref in extra_contour_refs],
-        contour_order=contour_order_values,
-        contour_labels=contour_labels,
     ).lines
     meta = storage_manager.load_job(job_id) or {}
     original_name = meta.get("originalFile", f"{job_id}.mpf")
@@ -640,7 +529,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
         <nav class="row">
           <button id="reset-contour-order" class="action-button" type="button">Reset</button>
           <button id="save-contour-order" class="action-button" type="button" disabled>Save Cut Order</button>
-          <a href="/jobs/{job_id}" class="action-button">Back to Sheet View</a>
+          <a href="/?job_id={job_id}" class="action-button">Back to Sheet View</a>
         </nav>
         <p id="contour-order-status" class="order-status"></p>
         <h1>Part {part_number}</h1>
@@ -664,10 +553,10 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           <p id="contour-status"></p>
         </div>
         <div class="card">
-          <h2>Contour Cut Order</h2>
+          <h2>Contour Cut Order (Beta)</h2>
           <p class="order-hint">
             Drag contours to reorder the cut sequence, then click save. The order is stored locally in your browser
-            for this part. Saved order updates the preview and the generated standalone part program.
+            for this part and does not yet change the generated program output.
           </p>
           <ol id="contour-order" class="order-list"></ol>
         </div>
@@ -706,20 +595,15 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             return contourInputs.map((input) => input.value.trim()).filter(Boolean);
           }}
 
-          function buildQueryString(entries, contourOrder = contourState.pendingOrder) {{
+          function buildQueryString(entries) {{
+            if (!entries.length) return "";
             const query = new URLSearchParams();
-            if (entries.length) {{
-              query.set("extra_contours", entries.join(","));
-            }}
-            if (Array.isArray(contourOrder) && contourOrder.length) {{
-              query.set("contour_order", contourOrder.join(","));
-            }}
-            const queryString = query.toString();
-            return queryString ? `?${{queryString}}` : "";
+            query.set("extra_contours", entries.join(","));
+            return `?${{query.toString()}}`;
           }}
 
-          function updateDownloadLink(entries, contourOrder = contourState.pendingOrder) {{
-            const queryString = buildQueryString(entries, contourOrder);
+          function updateDownloadLink(entries) {{
+            const queryString = buildQueryString(entries);
             downloadLink.href = `/jobs/{job_id}/parts/{part_number}/program${{queryString}}`;
           }}
 
@@ -857,7 +741,8 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           }}
 
           async function loadPart(entries = getExtraContours()) {{
-            const queryString = buildQueryString(entries, contourState.pendingOrder);
+            const queryString = buildQueryString(entries);
+            updateDownloadLink(entries);
             const resp = await fetch(`/jobs/{job_id}/parts/{part_number}${{queryString}}`);
             if (!resp.ok) {{
               plotInfo.textContent = "Unable to load part details.";
@@ -871,27 +756,17 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             contourState = {{
               normalizedContours,
               savedOrder,
-              pendingOrder: [...savedOrder],
+              pendingOrder: savedOrder,
             }};
             const orderedContours = applyContourOrder(normalizedContours, savedOrder);
             renderPlot(orderedContours);
-            updateDownloadLink(entries, savedOrder);
-            updateDownloadLink(entries, savedOrder);
             renderContourOrder(orderedContours, (order) => {{
               renderPlot(applyContourOrder(normalizedContours, order));
-              updateDownloadLink(entries, order);
             }});
             updateSaveState();
-            const autoEntries = Array.isArray(data.auto_extra_contours) ? data.auto_extra_contours : [];
-            if (entries.length && autoEntries.length) {{
-              contourStatus.textContent = `Including manual contours: ${{entries.join(", ")}} • Auto detected: ${{autoEntries.join(", ")}}`;
-            }} else if (entries.length) {{
-              contourStatus.textContent = `Including manual contours: ${{entries.join(", ")}}`;
-            }} else if (autoEntries.length) {{
-              contourStatus.textContent = `Auto-detected neighboring contours: ${{autoEntries.join(", ")}}`;
-            }} else {{
-              contourStatus.textContent = "No extra contours selected.";
-            }}
+            contourStatus.textContent = entries.length
+              ? `Including extra contours: ${{entries.join(", ")}}`
+              : "No extra contours selected.";
           }}
 
           function renderPlot(contours) {{
@@ -970,23 +845,15 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
           function syncInputsFromUrl() {{
             const params = new URLSearchParams(window.location.search);
             const raw = params.get("extra_contours");
-            if (raw) {{
-              raw.split(",").slice(0, contourInputs.length).forEach((value, index) => {{
-                contourInputs[index].value = value.trim();
-              }});
-            }}
-            const contourOrderRaw = params.get("contour_order");
-            if (contourOrderRaw) {{
-              contourState.pendingOrder = contourOrderRaw
-                .split(",")
-                .map((entry) => entry.trim())
-                .filter(Boolean);
-            }}
+            if (!raw) return;
+            raw.split(",").slice(0, contourInputs.length).forEach((value, index) => {{
+              contourInputs[index].value = value.trim();
+            }});
           }}
 
           applyContours.addEventListener("click", () => {{
             const entries = getExtraContours();
-            const queryString = buildQueryString(entries, contourState.pendingOrder);
+            const queryString = buildQueryString(entries);
             const url = new URL(window.location.href);
             url.search = queryString ? queryString.slice(1) : "";
             window.history.replaceState({{}}, "", url);
@@ -997,13 +864,7 @@ async def part_view(job_id: str, part_number: int) -> HTMLResponse:
             if (!contourState.pendingOrder.length) return;
             saveContourOrder(contourState.pendingOrder);
             contourState.savedOrder = [...contourState.pendingOrder];
-            const entries = getExtraContours();
-            const queryString = buildQueryString(entries, contourState.pendingOrder);
-            const url = new URL(window.location.href);
-            url.search = queryString ? queryString.slice(1) : "";
-            window.history.replaceState({{}}, "", url);
-            updateDownloadLink(entries, contourState.pendingOrder);
-            loadPart(entries);
+            updateSaveState();
           }});
 
           resetContourOrderButton.addEventListener("click", () => {{
@@ -1067,227 +928,9 @@ def _parse_extra_contours(raw: Optional[str], parts: list[PartSummaryModel]) -> 
                 contour_index=contour_index,
             )
         )
-        if len(refs) >= MAX_EXTRA_CONTOURS:
+        if len(refs) >= 5:
             break
     return refs
-
-
-def _resolve_extra_contours(
-    raw: Optional[str],
-    parts: list[PartSummaryModel],
-    raw_lines: list[str],
-    target_part: PartSummaryModel,
-) -> list[ExtraContourRef]:
-    explicit_refs = _parse_extra_contours(raw, parts)
-    auto_refs = _detect_common_neighbor_contours(parts=parts, raw_lines=raw_lines, target_part=target_part)
-    merged: list[ExtraContourRef] = []
-    seen: set[tuple[int, int]] = set()
-    for ref in [*explicit_refs, *auto_refs]:
-        key = (ref.part_number, ref.contour_index)
-        if key in seen:
-            continue
-        merged.append(ref)
-        seen.add(key)
-        if len(merged) >= MAX_EXTRA_CONTOURS:
-            break
-    return merged
-
-
-def _detect_common_neighbor_contour_labels(
-    parts: list[PartSummaryModel],
-    raw_lines: list[str],
-    target_part: PartSummaryModel,
-) -> list[str]:
-    refs = _detect_common_neighbor_contours(parts=parts, raw_lines=raw_lines, target_part=target_part)
-    return [f"{ref.part_number}.{ref.contour_index}" for ref in refs]
-
-
-def _detect_common_neighbor_contours(
-    parts: list[PartSummaryModel],
-    raw_lines: list[str],
-    target_part: PartSummaryModel,
-) -> list[ExtraContourRef]:
-    absolute_contours = _build_absolute_part_contours(parts, raw_lines)
-    target_contours = absolute_contours.get(target_part.part_number, [])
-    target_boundary_segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
-    for contour in target_contours:
-        if _contour_is_closed(contour):
-            target_boundary_segments.extend(_contour_segments(contour))
-
-    if not target_boundary_segments:
-        return []
-
-    refs: list[ExtraContourRef] = []
-    for candidate in sorted(parts, key=lambda part: part.part_number):
-        if candidate.part_number == target_part.part_number:
-            continue
-        candidate_contours = absolute_contours.get(candidate.part_number, [])
-        for contour_index, contour in enumerate(candidate_contours, start=1):
-            if _contour_is_closed(contour):
-                continue
-            if not _contour_is_common_neighbor(contour, target_boundary_segments):
-                continue
-            refs.append(
-                ExtraContourRef(
-                    part_number=candidate.part_number,
-                    part_line=candidate.part_line,
-                    contour_index=contour_index,
-                )
-            )
-            if len(refs) >= MAX_EXTRA_CONTOURS:
-                return refs
-    return refs
-
-
-def _build_absolute_part_contours(
-    parts: list[PartSummaryModel],
-    raw_lines: list[str],
-) -> dict[int, list[list[tuple[float, float]]]]:
-    contours_by_part: dict[int, list[list[tuple[float, float]]]] = {}
-    for part in parts:
-        anchor_x = float(part.anchor_x or 0.0)
-        anchor_y = float(part.anchor_y or 0.0)
-        absolute_contours: list[list[tuple[float, float]]] = []
-        for contour_index in range(1, int(part.contours) + 1):
-            contour_block = extract_part_contour_block(raw_lines, part.part_line, contour_index)
-            local_points = _build_contour_points_from_block(contour_block)
-            if not local_points:
-                continue
-            absolute_contours.append([(point[0] + anchor_x, point[1] + anchor_y) for point in local_points])
-        contours_by_part[part.part_number] = absolute_contours
-    return contours_by_part
-
-
-
-
-def _build_contour_points_from_block(contour_block: list[str]) -> list[tuple[float, float]]:
-    points: list[tuple[float, float]] = []
-    current_x: float | None = None
-    current_y: float | None = None
-
-    for raw_line in contour_block:
-        line = raw_line.strip()
-        if not line:
-            continue
-        if "HKSTR(" in line.upper():
-            parsed = _parse_hkstr_start_xy(line)
-            if parsed is not None:
-                current_x, current_y = parsed
-                points.append((current_x, current_y))
-            continue
-
-        if not line.upper().startswith("G"):
-            continue
-
-        maybe_x = _extract_axis_value(line, "X")
-        maybe_y = _extract_axis_value(line, "Y")
-        if maybe_x is None and maybe_y is None:
-            continue
-        if maybe_x is not None:
-            current_x = maybe_x
-        if maybe_y is not None:
-            current_y = maybe_y
-        if current_x is None or current_y is None:
-            continue
-        points.append((current_x, current_y))
-
-    return points
-
-
-def _parse_hkstr_start_xy(line: str) -> tuple[float, float] | None:
-    match = re.search(r"HKSTR\(([^)]*)\)", line, flags=re.IGNORECASE)
-    if not match:
-        return None
-    args = [item.strip() for item in match.group(1).split(",")]
-    if len(args) < 4:
-        return None
-    try:
-        return float(args[2]), float(args[3])
-    except ValueError:
-        return None
-
-
-def _extract_axis_value(line: str, axis: str) -> float | None:
-    match = re.search(rf"{axis}\s*([-+]?\d*\.?\d+)", line, flags=re.IGNORECASE)
-    if not match:
-        return None
-    try:
-        return float(match.group(1))
-    except ValueError:
-        return None
-def _contour_is_common_neighbor(
-    contour: list[tuple[float, float]],
-    target_boundary_segments: list[tuple[tuple[float, float], tuple[float, float]]],
-) -> bool:
-    if len(contour) < 2:
-        return False
-    contour_segments = _contour_segments(contour)
-    if not contour_segments:
-        return False
-    for segment in contour_segments:
-        for boundary in target_boundary_segments:
-            if _segment_to_segment_distance(segment[0], segment[1], boundary[0], boundary[1]) <= COMMON_NEIGHBOR_DISTANCE_TOLERANCE:
-                return True
-    return False
-
-
-def _contour_is_closed(contour: list[tuple[float, float]]) -> bool:
-    if len(contour) < 2:
-        return False
-    first = contour[0]
-    last = contour[-1]
-    return ((first[0] - last[0]) ** 2 + (first[1] - last[1]) ** 2) ** 0.5 <= CONTOUR_CLOSE_EPSILON
-
-
-def _contour_segments(contour: list[tuple[float, float]]) -> list[tuple[tuple[float, float], tuple[float, float]]]:
-    return [(contour[idx], contour[idx + 1]) for idx in range(len(contour) - 1)]
-
-
-def _segment_to_segment_distance(
-    p1: tuple[float, float],
-    p2: tuple[float, float],
-    q1: tuple[float, float],
-    q2: tuple[float, float],
-) -> float:
-    return min(
-        _point_to_segment_distance(p1, q1, q2),
-        _point_to_segment_distance(p2, q1, q2),
-        _point_to_segment_distance(q1, p1, p2),
-        _point_to_segment_distance(q2, p1, p2),
-    )
-
-
-def _point_to_segment_distance(
-    point: tuple[float, float],
-    start: tuple[float, float],
-    end: tuple[float, float],
-) -> float:
-    dx = end[0] - start[0]
-    dy = end[1] - start[1]
-    if dx == 0.0 and dy == 0.0:
-        return ((point[0] - start[0]) ** 2 + (point[1] - start[1]) ** 2) ** 0.5
-    t = ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / (dx * dx + dy * dy)
-    t = max(0.0, min(1.0, t))
-    proj_x = start[0] + t * dx
-    proj_y = start[1] + t * dy
-    return ((point[0] - proj_x) ** 2 + (point[1] - proj_y) ** 2) ** 0.5
-
-
-
-
-def _parse_contour_order(raw: Optional[str], allowed_labels: list[str]) -> list[str]:
-    if not raw:
-        return []
-    allowed = {label.strip() for label in allowed_labels if str(label).strip()}
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for token in raw.split(','):
-        label = token.strip()
-        if not label or label not in allowed or label in seen:
-            continue
-        ordered.append(label)
-        seen.add(label)
-    return ordered
 
 
 def _build_display_lines(result) -> list[ParsedLineModel]:

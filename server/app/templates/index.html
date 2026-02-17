@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cut Order Plugin</title>
+    <title>HK Parser Upload</title>
     <style>
       :root { color-scheme: light; }
       body {
@@ -14,107 +14,183 @@
         height: 100vh;
         overflow: hidden;
       }
-      .menu-bar {
-        height: 56px;
-        display: flex;
-        align-items: center;
-        gap: 0.65rem;
-        padding: 0 0.8rem;
-        border-bottom: 1px solid #cbd5e1;
-        background: #fff;
+      h1,
+      h2 {
+        margin-bottom: 0.5rem;
       }
-      .menu-bar button {
-        height: 34px;
-        border: 1px solid #1e293b;
-        background: #1e293b;
+      .card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.5rem;
+      }
+      th,
+      td {
+        border: 1px solid #e2e8f0;
+        padding: 0.5rem;
+        text-align: left;
+      }
+      th {
+        background: #f1f5f9;
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.15rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.85rem;
         color: #fff;
-        border-radius: 6px;
-        padding: 0 0.8rem;
-        font-size: 0.8rem;
-        cursor: pointer;
       }
-      .menu-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
-      #menu-status { color: #475569; font-size: 0.9rem; margin-left: auto; }
-      .main {
-        display: flex;
-        height: calc(100vh - 56px);
+      .badge.error {
+        background: #ef4444;
       }
-      .canvas-pane {
-        flex: 1;
-        padding: 0.7rem;
+      .badge.warning {
+        background: #f59e0b;
+      }
+      .hidden {
+        display: none;
+      }
+      .visually-hidden {
+        position: absolute;
+        left: -9999px;
+        width: 1px;
+        height: 1px;
         overflow: hidden;
       }
-      #main-canvas {
-        width: 100%;
-        height: 100%;
+      .sheet-canvas {
         border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        background: white;
+        border-radius: 6px;
+        background: #ffffff;
+        margin-top: 0.5rem;
       }
-      .side-pane {
-        width: 350px;
-        min-width: 350px;
-        border-left: 1px solid #cbd5e1;
-        background: #fff;
-        display: flex;
-        flex-direction: column;
-      }
-      .side-list {
-        flex: 1;
+      .code-box {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 0.75rem;
+        border-radius: 6px;
         overflow-y: auto;
-        margin: 0;
-        padding: 0.6rem;
-        list-style: none;
+        max-height: 360px;
+        white-space: pre;
+      }
+      .order-list {
+        list-style: decimal;
+        padding-left: 1.5rem;
+        margin: 0.75rem 0 0;
       }
       .order-item {
-        border: 1px solid #cbd5e1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #e2e8f0;
         border-radius: 6px;
-        padding: 0.5rem 0.55rem;
-        margin-bottom: 0.45rem;
+        background: #ffffff;
+        margin-bottom: 0.5rem;
         cursor: grab;
-        background: #f8fafc;
-        user-select: none;
       }
-      .order-item.dragging { opacity: 0.45; }
-      .changed-from { color: #dc2626; font-weight: 700; }
-      .extra-wrap { border-top: 1px solid #e2e8f0; padding: 0.55rem; }
-      .extra-wrap label { display: block; font-size: 0.8rem; margin-bottom: 0.35rem; }
-      .extra-row { display: flex; gap: 0.4rem; }
-      .extra-row input {
-        flex: 1;
-        min-width: 0;
-        border: 1px solid #cbd5e1;
+      .order-item.dragging {
+        opacity: 0.6;
+        background: #f1f5f9;
+      }
+      .order-hint {
+        font-size: 0.9rem;
+        color: #475569;
+        margin-top: 0.5rem;
+      }
+      .order-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 0.75rem;
+      }
+      .top-actions {
+        flex-wrap: wrap;
+      }
+      .action-button {
+        padding: 0.4rem 0.85rem;
         border-radius: 6px;
-        height: 34px;
-        padding: 0 0.5rem;
-      }
-      .extra-row button {
         border: 1px solid #1e293b;
         background: #1e293b;
-        color: #fff;
-        border-radius: 6px;
-        padding: 0 0.7rem;
+        color: #ffffff;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .action-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+      .order-status {
+        font-size: 0.9rem;
+        color: #475569;
       }
       .hidden { display: none; }
       #upload-form { display: none; }
     </style>
   </head>
   <body>
-    <div class="menu-bar" id="menu-bar"></div>
-    <div class="main">
-      <div class="canvas-pane">
-        <canvas id="main-canvas" width="1300" height="850"></canvas>
+    <h1>HK Parser Upload</h1>
+    <div class="card">
+      <div class="order-actions top-actions">
+        <button id="reset-cut-order" class="action-button" type="button" disabled>Reset</button>
+        <button id="download-cut-order" class="action-button" type="button" disabled>Create MPF from Cut Order</button>
+        <button id="upload-new-file" class="action-button" type="button">Upload New File</button>
+        <span id="cut-order-status" class="order-status"></span>
       </div>
-      <aside class="side-pane">
-        <ul id="order-list" class="side-list"></ul>
-        <div id="extra-wrap" class="extra-wrap hidden">
-          <label for="extra-input">EXTRA CONTOURS (part.contour, part.contour):</label>
-          <div class="extra-row">
-            <input id="extra-input" type="text" />
-            <button id="apply-extra" type="button">Apply</button>
-          </div>
-        </div>
-      </aside>
+      <p id="status" class="hidden"></p>
+    </div>
+
+    <form id="upload-form" class="visually-hidden">
+      <label for="file">Select G-code file:</label>
+      <input type="file" id="file" name="file" accept=".gcode,.txt,.mpf,.nc,.tap" required />
+      <textarea id="description" name="description" rows="3"></textarea>
+      <button type="submit">Upload & Validate</button>
+    </form>
+
+    <div class="card hidden" id="results-card">
+      <p id="summary"></p>
+      <p id="storage"></p>
+      <div id="diagnostics-section" class="hidden">
+        <h2>Diagnostics</h2>
+        <table id="diagnostics-table">
+          <thead>
+            <tr>
+              <th>Severity</th>
+              <th>Message</th>
+              <th>Line</th>
+              <th>Code</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h2 id="sheet-layout">Sheet Layout</h2>
+      <div class="order-actions">
+        <button id="preview-sheet-skeleton" class="action-button" type="button" disabled>
+          Preview Sheet Skeleton
+        </button>
+      </div>
+      <p id="sheet-info" class="hidden"></p>
+      <canvas id="sheet-canvas" class="sheet-canvas" width="1440" height="840"></canvas>
+
+      <h2>Cut Order (Beta)</h2>
+      <p class="order-hint">
+        Drag parts to reorder the cut sequence. The order is saved locally in your browser and used to build the
+        reordered MPF.
+      </p>
+      <ol id="parts-order" class="order-list"></ol>
+
+      <h2>Original File Code</h2>
+      <pre id="raw-code" class="code-box"></pre>
     </div>
 
     <form id="upload-form">
@@ -123,501 +199,795 @@
     </form>
 
     <script>
-      const canvas = document.getElementById("main-canvas");
-      const ctx = canvas.getContext("2d");
-      const menuBar = document.getElementById("menu-bar");
-      const menuStatus = document.createElement("span");
-      menuStatus.id = "menu-status";
-      const orderList = document.getElementById("order-list");
-      const extraWrap = document.getElementById("extra-wrap");
-      const extraInput = document.getElementById("extra-input");
-      const applyExtraButton = document.getElementById("apply-extra");
-      const uploadForm = document.getElementById("upload-form");
+      const form = document.getElementById("upload-form");
+      const statusEl = document.getElementById("status");
+      const resultsCard = document.getElementById("results-card");
+      const summaryEl = document.getElementById("summary");
+      const storageEl = document.getElementById("storage");
+      const diagnosticsSection = document.getElementById("diagnostics-section");
+      const diagnosticsBody = document.querySelector("#diagnostics-table tbody");
+      const rawCode = document.getElementById("raw-code");
+      const sheetInfo = document.getElementById("sheet-info");
+      const sheetCanvas = document.getElementById("sheet-canvas");
+      const previewSkeletonButton = document.getElementById("preview-sheet-skeleton");
+      const partsOrderList = document.getElementById("parts-order");
+      const resetCutOrderButton = document.getElementById("reset-cut-order");
+      const downloadCutOrderButton = document.getElementById("download-cut-order");
+      const cutOrderStatus = document.getElementById("cut-order-status");
+      const uploadNewFileButton = document.getElementById("upload-new-file");
       const fileInput = document.getElementById("file");
       const descriptionInput = document.getElementById("description");
-
-      const state = {
-        mode: "sheet",
-        jobId: null,
-        job: null,
-        hotspots: [],
-        selectedPart: null,
-        partData: null,
-        partOrder: [],
-        originalPartOrder: [],
-        contourOrder: [],
-        originalContourOrder: [],
-        showSkeleton: false,
-        skeletonApplied: false,
+      let lastJobId = null;
+      let lastJob = null;
+      let sheetHotspots = [];
+      let lastSheetSnapshot = {
+        setup: null,
+        parts: [],
+      };
+      const cutOrderState = {
+        originalOrder: [],
+        savedOrder: [],
+        pendingOrder: [],
       };
 
-      function partOrderKey() { return `cutOrder:${state.jobId}`; }
-      function contourOrderKey(partNumber) { return `contourOrder:${state.jobId}:${partNumber}`; }
-
-      function readStoredOrder(parts) {
-        const fallback = parts.map((p) => p.part_number);
-        const raw = localStorage.getItem(partOrderKey());
-        if (!raw) return fallback;
-        try {
-          const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) return fallback;
-          const available = new Set(fallback);
-          const clean = parsed.filter((value) => available.has(value));
-          return [...clean, ...fallback.filter((n) => !clean.includes(n))];
-        } catch (_err) {
-          return fallback;
-        }
-      }
-
-      function readStoredContours(partNumber, contours) {
-        const fallback = contours.map((_, idx) => String(idx + 1));
-        const raw = localStorage.getItem(contourOrderKey(partNumber));
-        if (!raw) return fallback;
-        try {
-          const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) return fallback;
-          const available = new Set(fallback);
-          const clean = parsed.filter((value) => available.has(String(value))).map(String);
-          return [...clean, ...fallback.filter((id) => !clean.includes(id))];
-        } catch (_err) {
-          return fallback;
-        }
-      }
-
-      function savePartOrder() {
-        localStorage.setItem(partOrderKey(), JSON.stringify(state.partOrder));
-        menuStatus.textContent = "Part order saved.";
-      }
-
-      function saveContourOrder() {
-        if (!state.selectedPart) return;
-        localStorage.setItem(contourOrderKey(state.selectedPart.part_number), JSON.stringify(state.contourOrder));
-        menuStatus.textContent = "Cut order saved.";
-      }
-
-      function getOrderedParts() {
-        const partMap = new Map((state.job?.parts || []).map((part) => [part.part_number, part]));
-        return state.partOrder.map((id) => partMap.get(id)).filter(Boolean);
-      }
-
-      function renderMenu() {
-        menuBar.innerHTML = "";
-        const addButton = (label, onClick, disabled = false) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.textContent = label;
-          button.disabled = disabled;
-          button.addEventListener("click", onClick);
-          menuBar.appendChild(button);
-          return button;
-        };
-
-        if (state.mode === "sheet") {
-          addButton("RESET ORDER", () => {
-            if (!state.job) return;
-            localStorage.removeItem(partOrderKey());
-            state.partOrder = [...state.originalPartOrder];
-            state.skeletonApplied = false;
-            renderSheetMode();
-            menuStatus.textContent = "Order reset.";
-          }, !state.job);
-          addButton("SAVE ORDER", savePartOrder, !state.job);
-          addButton("PREVIEW SKELETON CUT", () => {
-            state.showSkeleton = !state.showSkeleton;
-            drawSheet();
-            menuStatus.textContent = state.showSkeleton ? "Skeleton preview enabled." : "Skeleton preview disabled.";
-          }, !state.job);
-          addButton("APPLY SKELETON CUT", async () => {
-            state.skeletonApplied = true;
-            await downloadCutOrderProgram();
-            menuStatus.textContent = "Applied skeleton cut and downloaded program.";
-          }, !state.job);
-          if (!new URLSearchParams(window.location.search).get("job_id")) {
-            addButton("UPLOAD", () => fileInput.click());
-          }
-        } else {
-          addButton("RESET ORDER", () => {
-            if (!state.partData) return;
-            localStorage.removeItem(contourOrderKey(state.selectedPart.part_number));
-            state.contourOrder = [...state.originalContourOrder];
-            renderPartMode();
-            menuStatus.textContent = "Contour order reset.";
-          }, !state.partData);
-          addButton("SAVE CUT ORDER", saveContourOrder, !state.partData);
-          addButton("GENERATE STAND ALONE", downloadStandalonePart, !state.partData);
-          addButton("BACK TO SHEET", () => {
-            state.mode = "sheet";
-            state.selectedPart = null;
-            state.partData = null;
-            renderSheetMode();
-          });
-        }
-        menuBar.appendChild(menuStatus);
-      }
-
-      function drawSheet() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        state.hotspots = [];
-        const setup = state.job?.setup || {};
-        const orderedParts = getOrderedParts();
-        const sheetW = Number(setup.sheetX || 0);
-        const sheetH = Number(setup.sheetY || 0);
-        if (!sheetW || !sheetH) return;
-
-        const rotatedW = sheetH;
-        const rotatedH = sheetW;
-        const padding = 26;
-        const scale = Math.min((canvas.width - 2 * padding) / rotatedW, (canvas.height - 2 * padding) / rotatedH);
-        const originX = (canvas.width - rotatedW * scale) / 2;
-        const originY = (canvas.height - rotatedH * scale) / 2;
-
-        const toCanvas = (x, y) => {
-          const xRot = -y + sheetH;
-          const yRot = x;
-          return {
-            x: originX + xRot * scale,
-            y: originY + (rotatedH - yRot) * scale,
-          };
-        };
-
-        ctx.strokeStyle = "#1e293b";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(originX, originY, rotatedW * scale, rotatedH * scale);
-
-        orderedParts.forEach((part, idx) => {
-          const contours = part.plot_points || [];
-          let minX = Infinity;
-          let minY = Infinity;
-          let maxX = -Infinity;
-          let maxY = -Infinity;
-          ctx.strokeStyle = "#2563eb";
-          ctx.lineWidth = 1.2;
-
-          contours.forEach((contour) => {
-            if (!Array.isArray(contour) || !contour.length) return;
-            ctx.beginPath();
-            contour.forEach((point, pointIdx) => {
-              const baseX = (part.anchor_x || 0) + Number(point[0] || 0);
-              const baseY = (part.anchor_y || 0) + Number(point[1] || 0);
-              const p = toCanvas(baseX, baseY);
-              minX = Math.min(minX, p.x);
-              minY = Math.min(minY, p.y);
-              maxX = Math.max(maxX, p.x);
-              maxY = Math.max(maxY, p.y);
-              if (pointIdx === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-            });
-            ctx.stroke();
-          });
-
-          if (state.showSkeleton && minX < Infinity) {
-            ctx.fillStyle = "rgba(148, 163, 184, 0.18)";
-            ctx.fillRect(minX, minY, Math.max(12, maxX - minX), Math.max(12, maxY - minY));
-          }
-
-          if (minX < Infinity) {
-            state.hotspots.push({
-              x: minX,
-              y: minY,
-              width: Math.max(12, maxX - minX),
-              height: Math.max(12, maxY - minY),
-              partNumber: part.part_number,
-            });
-          }
-
-          if (part.anchor_x != null && part.anchor_y != null) {
-            const labelPoint = toCanvas(part.anchor_x, part.anchor_y);
-            ctx.fillStyle = "#0f172a";
-            ctx.font = "12px Arial";
-            ctx.fillText(String(idx + 1), labelPoint.x + 6, labelPoint.y - 6);
-          }
-        });
-      }
-
-      function renderOrderList(modeItems, getLabelHtml) {
-        orderList.innerHTML = "";
-        modeItems.forEach((entry, index) => {
-          const li = document.createElement("li");
-          li.className = "order-item";
-          li.setAttribute("draggable", "true");
-          li.dataset.id = String(entry.id);
-          li.innerHTML = getLabelHtml(entry, index);
-          orderList.appendChild(li);
-        });
-        enableDragSorting(orderList);
-      }
-
-      function renderSheetMode() {
-        extraWrap.classList.add("hidden");
-        renderMenu();
-        const originalIndex = new Map(state.originalPartOrder.map((id, index) => [id, index + 1]));
-        const items = state.partOrder.map((partNumber, index) => ({ id: partNumber, index }));
-        renderOrderList(items, (entry, index) => {
-          const oldPos = originalIndex.get(entry.id);
-          const changed = oldPos !== index + 1;
-          const changedSuffix = changed ? ` <span class="changed-from">(${oldPos})</span>` : "";
-          return `PART ${entry.id}${changedSuffix}`;
-        });
-        drawSheet();
-      }
-
-      async function loadPart(partNumber, extra = "") {
-        const params = new URLSearchParams();
-        if (extra) params.set("extra_contours", extra);
-        const query = params.toString() ? `?${params.toString()}` : "";
-        const response = await fetch(`/jobs/${encodeURIComponent(state.jobId)}/parts/${partNumber}${query}`);
-        if (!response.ok) throw new Error("Unable to load part");
-        state.partData = await response.json();
-        const contours = state.partData.plot_contours || state.partData.plot_points || [];
-        state.originalContourOrder = contours.map((_, index) => String(index + 1));
-        state.contourOrder = readStoredContours(partNumber, contours);
-      }
-
-      function drawPart() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const contoursRaw = state.partData?.plot_contours || state.partData?.plot_points || [];
-        const contourMap = new Map();
-        contoursRaw.forEach((contour, index) => contourMap.set(String(index + 1), contour.points || contour));
-        const ordered = state.contourOrder.map((id) => contourMap.get(id)).filter(Boolean);
-        const points = ordered.flat();
-        if (!points.length) return;
-
-        let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
-        points.forEach((point) => {
-          const x = Number(point[0] || 0);
-          const y = Number(point[1] || 0);
-          minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-        });
-        const width = Math.max(1, maxX - minX);
-        const height = Math.max(1, maxY - minY);
-        const rotW = height;
-        const rotH = width;
-        const pad = 28;
-        const scale = Math.min((canvas.width - 2 * pad) / rotW, (canvas.height - 2 * pad) / rotH);
-        const originX = (canvas.width - rotW * scale) / 2;
-        const originY = (canvas.height - rotH * scale) / 2;
-
-        const toCanvas = (x, y) => {
-          const nx = x - minX;
-          const ny = y - minY;
-          const xRot = -ny + height;
-          const yRot = nx;
-          return { x: originX + xRot * scale, y: originY + (rotH - yRot) * scale };
-        };
-
-        ctx.strokeStyle = "#2563eb";
-        ctx.lineWidth = 1.5;
-        ordered.forEach((contour, idx) => {
-          if (!Array.isArray(contour) || !contour.length) return;
-          ctx.beginPath();
-          contour.forEach((point, pIdx) => {
-            const p = toCanvas(Number(point[0] || 0), Number(point[1] || 0));
-            if (pIdx === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-          });
-          ctx.stroke();
-          const labelPoint = toCanvas(Number(contour[0][0] || 0), Number(contour[0][1] || 0));
-          ctx.fillStyle = "#0f172a";
-          ctx.font = "11px Arial";
-          ctx.fillText(String(idx + 1), labelPoint.x + 4, labelPoint.y - 4);
-        });
-      }
-
-      function renderPartMode() {
-        extraWrap.classList.remove("hidden");
-        renderMenu();
-        const originalIndex = new Map(state.originalContourOrder.map((id, idx) => [id, idx + 1]));
-        const items = state.contourOrder.map((id) => ({ id }));
-        renderOrderList(items, (entry, index) => {
-          const oldPos = originalIndex.get(entry.id);
-          const changed = oldPos !== index + 1;
-          const changedSuffix = changed ? ` <span class="changed-from">(${oldPos})</span>` : "";
-          return `CONT ${index + 1}${changedSuffix}`;
-        });
-        drawPart();
-      }
-
-      async function downloadStandalonePart() {
-        if (!state.selectedPart) return;
-        const value = cleanExtraContours(extraInput.value);
-        const params = new URLSearchParams();
-        if (value) params.set("extra_contours", value);
-        const query = params.toString() ? `?${params.toString()}` : "";
-        const response = await fetch(`/jobs/${encodeURIComponent(state.jobId)}/parts/${state.selectedPart.part_number}/program${query}`);
-        if (!response.ok) {
-          menuStatus.textContent = "Unable to generate stand alone file.";
-          return;
-        }
-        const blob = await response.blob();
-        const href = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        const disposition = response.headers.get("Content-Disposition") || "";
-        const match = disposition.match(/filename="([^"]+)"/i);
-        link.download = match ? match[1] : `part-${state.selectedPart.part_number}.mpf`;
-        link.href = href;
-        link.click();
-        URL.revokeObjectURL(href);
-      }
-
-      function cleanExtraContours(raw) {
-        return raw
-          .split(",")
-          .map((token) => token.trim())
-          .filter(Boolean)
-          .join(",");
-      }
-
-      function enableDragSorting(listEl) {
-        let dragging = null;
-        listEl.ondragstart = (event) => {
-          const item = event.target.closest(".order-item");
-          if (!item) return;
-          dragging = item;
-          dragging.classList.add("dragging");
-          event.dataTransfer.effectAllowed = "move";
-        };
-        listEl.ondragend = () => { if (dragging) dragging.classList.remove("dragging"); dragging = null; };
-        listEl.ondragover = (event) => {
-          event.preventDefault();
-          if (!dragging) return;
-          const target = event.target.closest(".order-item");
-          if (!target || target === dragging) return;
-          const rect = target.getBoundingClientRect();
-          const after = event.clientY - rect.top > rect.height / 2;
-          if (after) target.after(dragging); else target.before(dragging);
-        };
-        listEl.ondrop = (event) => {
-          event.preventDefault();
-          const ids = Array.from(orderList.querySelectorAll(".order-item")).map((item) => item.dataset.id);
-          if (state.mode === "sheet") {
-            state.partOrder = ids.map(Number);
-            renderSheetMode();
-            menuStatus.textContent = "Unsaved part-order changes.";
-          } else {
-            state.contourOrder = ids;
-            renderPartMode();
-            menuStatus.textContent = "Unsaved contour changes.";
-          }
-        };
-      }
-
-      function buildSkeletonSegments() {
-        const setup = state.job?.setup || {};
-        const w = Number(setup.sheetX || 0);
-        const h = Number(setup.sheetY || 0);
-        if (!w || !h) return [];
-        return [
-          { start: { x: 0, y: h / 2 }, end: { x: w, y: h / 2 } },
-          { start: { x: w / 2, y: 0 }, end: { x: w / 2, y: h } },
-        ];
-      }
-
-      async function downloadCutOrderProgram() {
-        if (!state.jobId) return;
-        const contourOrders = {};
-        (state.job?.parts || []).forEach((part) => {
-          const raw = localStorage.getItem(contourOrderKey(part.part_number));
-          if (raw) {
-            try {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed) && parsed.length) contourOrders[part.part_number] = parsed;
-            } catch (_err) {
-              // ignore malformed stored contour order
-            }
-          }
-        });
-        const response = await fetch(`/jobs/${encodeURIComponent(state.jobId)}/cut-order/program`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order: state.partOrder, contour_orders: contourOrders }),
-        });
-        if (!response.ok) {
-          menuStatus.textContent = "Unable to build reordered program.";
-          return;
-        }
-        let text = await response.text();
-        if (state.skeletonApplied) {
-          const segments = buildSkeletonSegments();
-          const toLine = (segment) => `G0 X${segment.start.x.toFixed(2)}, Y${segment.start.y.toFixed(2)}\nHKCUT(0,0,0)\nG1 X${segment.end.x.toFixed(2)}, Y${segment.end.y.toFixed(2)}\nHKSTO(0,0,0)`;
-          text += `\n\nN10001 HKSTR(1,1,0,0,0,0.0,0,0)\nHKPIE(0,0,0)\n${segments.map(toLine).join("\n")}`;
-        }
-        const blob = new Blob([text], { type: "text/plain" });
-        const href = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.download = `cut-order-${state.jobId}.mpf`;
-        link.href = href;
-        link.click();
-        URL.revokeObjectURL(href);
-      }
-
-      async function loadJob(jobId) {
-        const response = await fetch(`/jobs/${encodeURIComponent(jobId)}/analysis`);
-        if (!response.ok) {
-          menuStatus.textContent = "Unable to load job analysis.";
-          return;
-        }
-        state.jobId = jobId;
-        state.job = await response.json();
-        state.originalPartOrder = (state.job.parts || []).map((part) => part.part_number);
-        state.partOrder = readStoredOrder(state.job.parts || []);
-        state.mode = "sheet";
-        renderSheetMode();
-        renderMenu();
-        menuStatus.textContent = `Loaded ${jobId}`;
-      }
+      uploadNewFileButton.addEventListener("click", () => {
+        fileInput.click();
+      });
 
       fileInput.addEventListener("change", () => {
         if (!fileInput.files.length) return;
         const description = window.prompt("Describe the file contents (optional):", "");
         descriptionInput.value = description ? description.trim() : "";
-        uploadForm.requestSubmit();
+        form.requestSubmit();
       });
 
-      uploadForm.addEventListener("submit", async (event) => {
+      form.addEventListener("submit", async (event) => {
         event.preventDefault();
         if (!fileInput.files.length) return;
+
+        statusEl.classList.remove("hidden");
+        statusEl.textContent = "Uploading and validating...";
+        resultsCard.classList.add("hidden");
+        diagnosticsBody.innerHTML = "";
+        rawCode.textContent = "";
+        sheetHotspots = [];
+        lastJobId = null;
+        cutOrderStatus.textContent = "";
+        resetCutOrderButton.disabled = true;
+        downloadCutOrderButton.disabled = true;
+
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
-        formData.append("description", descriptionInput.value || "");
-        const response = await fetch("/upload", { method: "POST", body: formData });
-        if (!response.ok) {
-          menuStatus.textContent = "Upload failed.";
+        formData.append("description", descriptionInput.value);
+
+        try {
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(detail || "Validation failed");
+          }
+
+          const data = await response.json();
+          lastJob = data;
+          lastJobId = data.job_id;
+          renderSummary(data);
+          renderStorage(data);
+          renderDiagnostics(data);
+        renderRawCode(data.raw_program || []);
+        renderPartsOrder(data.parts || []);
+        renderSheet(data.setup, getOrderedParts(data.parts || [], cutOrderState.pendingOrder));
+          cutOrderStatus.textContent = "";
+
+          statusEl.textContent = "Validation completed.";
+          resultsCard.classList.remove("hidden");
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+        } finally {
+          fileInput.value = "";
+        }
+      });
+
+      function renderSummary(data) {
+        summaryEl.textContent = `Job: ${data.job_id} — Errors: ${data.summary.errors}, Warnings: ${data.summary.warnings}, Lines: ${data.summary.lines}`;
+      }
+
+      function renderStorage(data) {
+        const storageBits = [];
+        if (data.stored_path) storageBits.push(`Stored: ${data.stored_path}`);
+        if (data.meta_path) storageBits.push(`Meta: ${data.meta_path}`);
+        if (data.uploaded_at) storageBits.push(`Uploaded: ${data.uploaded_at}`);
+        storageEl.textContent = storageBits.join(" | ");
+      }
+
+      function renderDiagnostics(diagnostics) {
+        diagnosticsBody.innerHTML = "";
+        const hasIssues = Boolean(lastJob?.summary?.errors || lastJob?.summary?.warnings);
+        if (!hasIssues) {
+          diagnosticsSection.classList.add("hidden");
           return;
         }
-        const payload = await response.json();
-        fileInput.value = "";
-        await loadJob(payload.job_id);
+        diagnosticsSection.classList.remove("hidden");
+        if (!diagnostics.length) {
+          diagnosticsBody.innerHTML = `<tr><td colspan="4">No diagnostics</td></tr>`;
+          return;
+        }
+        diagnostics.forEach((diag) => {
+          const row = document.createElement("tr");
+          const badge = `<span class="badge ${diag.severity}">${diag.severity}</span>`;
+          row.innerHTML = `
+            <td>${badge}</td>
+            <td>${diag.message}</td>
+            <td>${diag.line ?? ""}</td>
+            <td>${diag.code ?? ""}</td>
+          `;
+          diagnosticsBody.appendChild(row);
+        });
+      }
+
+      function renderRawCode(lines) {
+        if (!lines.length) {
+          rawCode.textContent = "No program lines available.";
+          return;
+        }
+        rawCode.textContent = lines.join("\n");
+      }
+
+      function renderSheet(setup, parts) {
+        const ctx = sheetCanvas.getContext("2d");
+        ctx.clearRect(0, 0, sheetCanvas.width, sheetCanvas.height);
+        sheetInfo.classList.add("hidden");
+        sheetHotspots = [];
+        sheetCanvas.style.cursor = parts.length ? "pointer" : "default";
+        lastSheetSnapshot = { setup, parts };
+        updateSkeletonButtonState(setup);
+
+        if (!setup || !setup.sheetX || !setup.sheetY) {
+          sheetInfo.textContent = "No HKINI sheet size found for this file.";
+          sheetInfo.classList.remove("hidden");
+          return;
+        }
+
+        const padding = 24;
+        const sheetWidth = setup.sheetX;
+        const sheetHeight = setup.sheetY;
+        const scale = Math.min(
+          (sheetCanvas.width - padding * 2) / sheetWidth,
+          (sheetCanvas.height - padding * 2) / sheetHeight
+        );
+        const originX = padding;
+        const originY = padding;
+        const drawWidth = sheetWidth * scale;
+        const drawHeight = sheetHeight * scale;
+
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(originX, originY, drawWidth, drawHeight);
+
+        const palette = ["#2563eb", "#16a34a", "#f97316", "#8b5cf6", "#0ea5e9"];
+        const flipParts180 = true;
+        const transformPoint = (x, y) => {
+          if (!flipParts180) {
+            return { x, y };
+          }
+          return { x: sheetWidth - x, y: sheetHeight - y };
+        };
+        const toCanvas = ({ x, y }) => ({
+          x: originX + x * scale,
+          y: originY + (sheetHeight - y) * scale,
+        });
+        ctx.font = "12px Arial";
+        parts.forEach((part, index) => {
+          const color = palette[index % palette.length];
+          const contours = part.plot_points || [];
+          let minX = null;
+          let minY = null;
+          let maxX = null;
+          let maxY = null;
+
+          if (contours.length) {
+            contours.flat().forEach((point) => {
+              const baseX = (part.anchor_x ?? 0) + point[0];
+              const baseY = (part.anchor_y ?? 0) + point[1];
+              const { x, y } = transformPoint(baseX, baseY);
+              minX = minX === null ? x : Math.min(minX, x);
+              minY = minY === null ? y : Math.min(minY, y);
+              maxX = maxX === null ? x : Math.max(maxX, x);
+              maxY = maxY === null ? y : Math.max(maxY, y);
+            });
+          }
+
+          if (minX === null || minY === null || maxX === null || maxY === null) {
+            if (part.anchor_x == null || part.anchor_y == null) {
+              return;
+            }
+            const { x, y } = transformPoint(part.anchor_x, part.anchor_y);
+            minX = x - 5;
+            maxX = x + 5;
+            minY = y - 5;
+            maxY = y + 5;
+          }
+
+          let boxX = originX + minX * scale;
+          let boxY = originY + (sheetHeight - maxY) * scale;
+          let boxW = (maxX - minX) * scale;
+          let boxH = (maxY - minY) * scale;
+          const minBoxSize = 12;
+          if (boxW < minBoxSize) {
+            boxX -= (minBoxSize - boxW) / 2;
+            boxW = minBoxSize;
+          }
+          if (boxH < minBoxSize) {
+            boxY -= (minBoxSize - boxH) / 2;
+            boxH = minBoxSize;
+          }
+
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([]);
+          contours.forEach((contour) => {
+            if (contour.length < 2) return;
+            ctx.beginPath();
+            contour.forEach((point, pointIndex) => {
+              const baseX = (part.anchor_x ?? 0) + point[0];
+              const baseY = (part.anchor_y ?? 0) + point[1];
+              const canvasPoint = toCanvas(transformPoint(baseX, baseY));
+              const x = canvasPoint.x;
+              const y = canvasPoint.y;
+              if (pointIndex === 0) {
+                ctx.moveTo(x, y);
+              } else {
+                ctx.lineTo(x, y);
+              }
+            });
+            ctx.stroke();
+          });
+
+          ctx.fillStyle = color;
+          ctx.fillText(`#${index + 1} (P${part.part_number})`, boxX + 4, boxY + 14);
+
+          sheetHotspots.push({
+            x: boxX,
+            y: boxY,
+            width: boxW,
+            height: boxH,
+            url: `/jobs/${lastJobId}/parts/${part.part_number}/view`,
+          });
+        });
+
+        sheetInfo.textContent = `Sheet: ${sheetWidth} × ${sheetHeight} — Click a part to open.`;
+        sheetInfo.classList.remove("hidden");
+      }
+
+      function updateSkeletonButtonState(setup) {
+        previewSkeletonButton.disabled = !setup || !setup.sheetX || !setup.sheetY;
+      }
+
+      function getPartBounds(part, sheetWidth, sheetHeight, transformPoint) {
+        const contours = part.plot_points || [];
+        let minX = null;
+        let minY = null;
+        let maxX = null;
+        let maxY = null;
+
+        if (contours.length) {
+          contours.flat().forEach((point) => {
+            const baseX = (part.anchor_x ?? 0) + point[0];
+            const baseY = (part.anchor_y ?? 0) + point[1];
+            const { x, y } = transformPoint(baseX, baseY);
+            minX = minX === null ? x : Math.min(minX, x);
+            minY = minY === null ? y : Math.min(minY, y);
+            maxX = maxX === null ? x : Math.max(maxX, x);
+            maxY = maxY === null ? y : Math.max(maxY, y);
+          });
+        }
+
+        if (minX === null || minY === null || maxX === null || maxY === null) {
+          if (part.anchor_x == null || part.anchor_y == null) {
+            return null;
+          }
+          const { x, y } = transformPoint(part.anchor_x, part.anchor_y);
+          minX = Math.max(0, x - 1);
+          maxX = Math.min(sheetWidth, x + 1);
+          minY = Math.max(0, y - 1);
+          maxY = Math.min(sheetHeight, y + 1);
+        }
+
+        return { minX, minY, maxX, maxY };
+      }
+
+      function buildSkeletonCanvas(setup, parts) {
+        if (!setup || !setup.sheetX || !setup.sheetY) return null;
+        const canvas = document.createElement("canvas");
+        canvas.width = sheetCanvas.width;
+        canvas.height = sheetCanvas.height;
+        const ctx = canvas.getContext("2d");
+
+        const padding = 24;
+        const sheetWidth = setup.sheetX;
+        const sheetHeight = setup.sheetY;
+        const scale = Math.min(
+          (canvas.width - padding * 2) / sheetWidth,
+          (canvas.height - padding * 2) / sheetHeight
+        );
+        const originX = padding;
+        const originY = padding;
+        const drawWidth = sheetWidth * scale;
+        const drawHeight = sheetHeight * scale;
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#e2e8f0";
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 2;
+        ctx.fillRect(originX, originY, drawWidth, drawHeight);
+        ctx.strokeRect(originX, originY, drawWidth, drawHeight);
+
+        const flipParts180 = true;
+        const transformPoint = (x, y) => {
+          if (!flipParts180) {
+            return { x, y };
+          }
+          return { x: sheetWidth - x, y: sheetHeight - y };
+        };
+        const toCanvas = ({ x, y }) => ({
+          x: originX + x * scale,
+          y: originY + (sheetHeight - y) * scale,
+        });
+
+        const splitY = sheetHeight / 2;
+        const splitX = sheetWidth / 3;
+        const splitX2 = splitX * 2;
+        const leftMid = toCanvas({ x: 0, y: splitY });
+        const rightMid = toCanvas({ x: sheetWidth, y: splitY });
+        const splitLeftTop = toCanvas({ x: splitX, y: sheetHeight });
+        const splitLeftBottom = toCanvas({ x: splitX, y: 0 });
+        const splitRightTop = toCanvas({ x: splitX2, y: sheetHeight });
+        const splitRightBottom = toCanvas({ x: splitX2, y: 0 });
+
+        ctx.strokeStyle = "#dc2626";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(leftMid.x, leftMid.y);
+        ctx.lineTo(rightMid.x, rightMid.y);
+        ctx.moveTo(splitLeftTop.x, splitLeftTop.y);
+        ctx.lineTo(splitLeftBottom.x, splitLeftBottom.y);
+        ctx.moveTo(splitRightTop.x, splitRightTop.y);
+        ctx.lineTo(splitRightBottom.x, splitRightBottom.y);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fillStyle = "#000";
+        parts.forEach((part) => {
+          const bounds = getPartBounds(part, sheetWidth, sheetHeight, transformPoint);
+          if (!bounds) return;
+          const topLeft = toCanvas({ x: bounds.minX, y: bounds.maxY });
+          const bottomRight = toCanvas({ x: bounds.maxX, y: bounds.minY });
+          const rectX = topLeft.x;
+          const rectY = topLeft.y;
+          const rectW = bottomRight.x - topLeft.x;
+          const rectH = bottomRight.y - topLeft.y;
+          if (rectW <= 0 || rectH <= 0) return;
+          ctx.fillRect(rectX, rectY, rectW, rectH);
+        });
+        ctx.restore();
+
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(originX, originY, drawWidth, drawHeight);
+
+        return canvas;
+      }
+
+      function buildSkeletonSegments(sheetWidth, sheetHeight, parts) {
+        const flipParts180 = true;
+        const transformPoint = (x, y) => {
+          if (!flipParts180) {
+            return { x, y };
+          }
+          return { x: sheetWidth - x, y: sheetHeight - y };
+        };
+        const boundsList = parts
+          .map((part) => getPartBounds(part, sheetWidth, sheetHeight, transformPoint))
+          .filter(Boolean);
+        const clearance = 0.1;
+        const minSegmentLength = 0.05;
+        const subtractIntervals = (rangeStart, rangeEnd, blocked) => {
+          if (rangeStart >= rangeEnd) return [];
+          const sorted = blocked
+            .map(([start, end]) => [Math.max(rangeStart, start), Math.min(rangeEnd, end)])
+            .filter(([start, end]) => end > start)
+            .sort((a, b) => a[0] - b[0]);
+          const merged = [];
+          sorted.forEach(([start, end]) => {
+            const last = merged[merged.length - 1];
+            if (!last || start > last[1]) {
+              merged.push([start, end]);
+            } else {
+              last[1] = Math.max(last[1], end);
+            }
+          });
+          const segments = [];
+          let cursor = rangeStart;
+          merged.forEach(([start, end]) => {
+            if (start > cursor + minSegmentLength) {
+              segments.push([cursor, start]);
+            }
+            cursor = Math.max(cursor, end);
+          });
+          if (rangeEnd > cursor + minSegmentLength) {
+            segments.push([cursor, rangeEnd]);
+          }
+          return segments;
+        };
+        const buildBlocked = (axisValue, axisRange, isHorizontal) => {
+          return boundsList
+            .filter((bounds) => {
+              if (isHorizontal) {
+                return axisValue >= bounds.minY - clearance && axisValue <= bounds.maxY + clearance;
+              }
+              return axisValue >= bounds.minX - clearance && axisValue <= bounds.maxX + clearance;
+            })
+            .map((bounds) => {
+              if (isHorizontal) {
+                return [bounds.minX - clearance, bounds.maxX + clearance];
+              }
+              return [bounds.minY - clearance, bounds.maxY + clearance];
+            })
+            .map(([start, end]) => [Math.max(axisRange[0], start), Math.min(axisRange[1], end)])
+            .filter(([start, end]) => end > start);
+        };
+        const splitY = sheetHeight / 2;
+        const splitX = sheetWidth / 3;
+        const splitX2 = splitX * 2;
+        const segments = [];
+        [
+          { orientation: "h", value: splitY, range: [0, sheetWidth] },
+          { orientation: "v", value: splitX, range: [0, sheetHeight] },
+          { orientation: "v", value: splitX2, range: [0, sheetHeight] },
+        ].forEach((line) => {
+          const isHorizontal = line.orientation === "h";
+          const blocked = buildBlocked(line.value, line.range, isHorizontal);
+          const subSegments = subtractIntervals(line.range[0], line.range[1], blocked);
+          subSegments.forEach(([start, end]) => {
+            if (isHorizontal) {
+              segments.push({ start: { x: start, y: line.value }, end: { x: end, y: line.value } });
+            } else {
+              segments.push({ start: { x: line.value, y: start }, end: { x: line.value, y: end } });
+            }
+          });
+        });
+        return segments;
+      }
+
+      function getPartsOrderKey() {
+        return lastJobId ? `cutOrder:${lastJobId}` : null;
+      }
+
+      function getContourOrderKey(partNumber) {
+        return lastJobId ? `contourOrder:${lastJobId}:${partNumber}` : null;
+      }
+
+      function readStoredOrder(parts) {
+        const key = getPartsOrderKey();
+        if (!key) return parts.map((part) => part.part_number);
+        const raw = localStorage.getItem(key);
+        if (!raw) return parts.map((part) => part.part_number);
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return parts.map((part) => part.part_number);
+          const partNumbers = new Set(parts.map((part) => part.part_number));
+          const ordered = parsed.filter((value) => partNumbers.has(value));
+          const missing = parts
+            .map((part) => part.part_number)
+            .filter((value) => !ordered.includes(value));
+          return [...ordered, ...missing];
+        } catch (err) {
+          return parts.map((part) => part.part_number);
+        }
+      }
+
+      function saveStoredOrder(order) {
+        const key = getPartsOrderKey();
+        if (!key) return;
+        localStorage.setItem(key, JSON.stringify(order));
+      }
+
+      function readStoredContourOrder(partNumber) {
+        const key = getContourOrderKey(partNumber);
+        if (!key) return [];
+        const raw = localStorage.getItem(key);
+        if (!raw) return [];
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+          return [];
+        }
+      }
+
+      function getOrderedParts(parts, order) {
+        if (!order?.length) return parts;
+        const partsByNumber = new Map(parts.map((part) => [part.part_number, part]));
+        const ordered = order.map((partNumber) => partsByNumber.get(partNumber)).filter(Boolean);
+        const missing = parts.filter((part) => !order.includes(part.part_number));
+        return [...ordered, ...missing];
+      }
+
+      function ordersMatch(left, right) {
+        if (left.length !== right.length) return false;
+        return left.every((value, index) => value === right[index]);
+      }
+
+      function updateCutOrderStatus() {
+        if (!cutOrderState.pendingOrder.length) {
+          cutOrderStatus.textContent = "";
+          return;
+        }
+        const matchesOriginal = ordersMatch(cutOrderState.pendingOrder, cutOrderState.originalOrder);
+        cutOrderStatus.textContent = matchesOriginal
+          ? "Cut order matches the original file."
+          : "Cut order saved locally.";
+      }
+
+      function renderPartsOrder(parts) {
+        partsOrderList.innerHTML = "";
+        const hasParts = parts.length > 0;
+        downloadCutOrderButton.disabled = !hasParts;
+        resetCutOrderButton.disabled = !hasParts;
+        if (!parts.length) {
+          partsOrderList.innerHTML = "<li>No parts available.</li>";
+          return;
+        }
+        cutOrderState.originalOrder = parts.map((part) => part.part_number);
+        cutOrderState.savedOrder = readStoredOrder(parts);
+        cutOrderState.pendingOrder = [...cutOrderState.savedOrder];
+        const orderedParts = getOrderedParts(parts, cutOrderState.savedOrder);
+        orderedParts.forEach((part) => {
+          const item = document.createElement("li");
+          item.className = "order-item";
+          item.setAttribute("draggable", "true");
+          item.dataset.partNumber = String(part.part_number);
+          item.textContent = `Part ${part.part_number} — ${part.contours ?? 0} contours`;
+          partsOrderList.appendChild(item);
+        });
+        enableDragSorting(partsOrderList, () => {
+          const newOrder = Array.from(partsOrderList.querySelectorAll(".order-item")).map((item) =>
+            Number(item.dataset.partNumber)
+          );
+          saveStoredOrder(newOrder);
+          cutOrderState.pendingOrder = newOrder;
+          updateCutOrderStatus();
+          if (lastJob) {
+            const orderedParts = getOrderedParts(lastJob.parts || [], newOrder);
+            renderSheet(lastJob.setup, orderedParts);
+          }
+        });
+        updateCutOrderStatus();
+      }
+
+      function buildContourOrders(parts) {
+        const orders = {};
+        parts.forEach((part) => {
+          const stored = readStoredContourOrder(part.part_number);
+          if (stored.length) {
+            orders[part.part_number] = stored;
+          }
+        });
+        return orders;
+      }
+
+      function getCurrentOrder() {
+        return Array.from(partsOrderList.querySelectorAll(".order-item")).map((item) =>
+          Number(item.dataset.partNumber)
+        );
+      }
+
+      function getFilenameFromDisposition(disposition, fallbackName) {
+        if (!disposition) return fallbackName;
+        const match = disposition.match(/filename="([^"]+)"/i);
+        return match ? match[1] : fallbackName;
+      }
+
+      downloadCutOrderButton.addEventListener("click", async () => {
+        if (!lastJobId) return;
+        const order = getCurrentOrder();
+        if (!order.length) return;
+        const contourOrders = buildContourOrders(lastJob?.parts || []);
+        downloadCutOrderButton.disabled = true;
+        cutOrderStatus.textContent = "Building reordered MPF...";
+        try {
+          const response = await fetch(`/jobs/${lastJobId}/cut-order/program`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ order, contour_orders: contourOrders }),
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(detail || "Unable to build reordered MPF.");
+          }
+          const blob = await response.blob();
+          const fallbackName = `cut-order-${lastJobId}.mpf`;
+          const filename = getFilenameFromDisposition(response.headers.get("Content-Disposition"), fallbackName);
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(url);
+          cutOrderStatus.textContent = `Downloaded ${filename}.`;
+        } catch (err) {
+          cutOrderStatus.textContent = `Error: ${err.message}`;
+        } finally {
+          downloadCutOrderButton.disabled = !partsOrderList.querySelector(".order-item");
+        }
       });
 
-      canvas.addEventListener("click", async (event) => {
-        if (state.mode !== "sheet") return;
-        const rect = canvas.getBoundingClientRect();
+      resetCutOrderButton.addEventListener("click", () => {
+        if (!lastJob) return;
+        const key = getPartsOrderKey();
+        if (key) {
+          localStorage.removeItem(key);
+        }
+        (lastJob.parts || []).forEach((part) => {
+          const contourKey = getContourOrderKey(part.part_number);
+          if (contourKey) {
+            localStorage.removeItem(contourKey);
+          }
+        });
+        renderPartsOrder(lastJob.parts || []);
+        renderSheet(lastJob.setup, getOrderedParts(lastJob.parts || [], cutOrderState.pendingOrder));
+        cutOrderStatus.textContent = "Cut order reset to the original file.";
+      });
+
+      function enableDragSorting(listEl, onUpdate) {
+        let dragging = null;
+        listEl.addEventListener("dragstart", (event) => {
+          const item = event.target.closest(".order-item");
+          if (!item) return;
+          dragging = item;
+          item.classList.add("dragging");
+          event.dataTransfer.effectAllowed = "move";
+        });
+        listEl.addEventListener("dragend", () => {
+          if (dragging) {
+            dragging.classList.remove("dragging");
+            dragging = null;
+          }
+        });
+        listEl.addEventListener("dragover", (event) => {
+          event.preventDefault();
+          if (!dragging) return;
+          const target = event.target.closest(".order-item");
+          if (!target || target === dragging) return;
+          const rect = target.getBoundingClientRect();
+          const shouldInsertAfter = event.clientY - rect.top > rect.height / 2;
+          if (shouldInsertAfter) {
+            target.after(dragging);
+          } else {
+            target.before(dragging);
+          }
+        });
+        listEl.addEventListener("drop", (event) => {
+          event.preventDefault();
+          if (typeof onUpdate === "function") {
+            onUpdate();
+          }
+        });
+      }
+
+      async function loadJob(jobId) {
+        statusEl.classList.remove("hidden");
+        statusEl.textContent = "Loading saved analysis...";
+        resultsCard.classList.add("hidden");
+        diagnosticsBody.innerHTML = "";
+        rawCode.textContent = "";
+        sheetHotspots = [];
+        lastJobId = jobId;
+        cutOrderStatus.textContent = "";
+        resetCutOrderButton.disabled = true;
+        downloadCutOrderButton.disabled = true;
+
+        try {
+          const response = await fetch(`/jobs/${jobId}/analysis`);
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(detail || "Unable to load job analysis");
+          }
+          const data = await response.json();
+          lastJob = data;
+          renderSummary(data);
+          renderStorage(data);
+          renderDiagnostics(data.diagnostics);
+          renderRawCode(data.raw_program || []);
+          renderPartsOrder(data.parts || []);
+          renderSheet(data.setup, getOrderedParts(data.parts || [], cutOrderState.pendingOrder));
+          statusEl.textContent = "Saved analysis loaded.";
+          resultsCard.classList.remove("hidden");
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+        }
+      }
+
+      sheetCanvas.addEventListener("click", (event) => {
+        if (!sheetHotspots.length) return;
+        const rect = sheetCanvas.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
-        const hit = state.hotspots.find((spot) => x >= spot.x && x <= spot.x + spot.width && y >= spot.y && y <= spot.y + spot.height);
-        if (!hit) return;
-        state.selectedPart = (state.job.parts || []).find((part) => part.part_number === hit.partNumber) || null;
-        if (!state.selectedPart) return;
-        await loadPart(hit.partNumber, cleanExtraContours(extraInput.value || ""));
-        state.mode = "part";
-        renderPartMode();
+        const hit = sheetHotspots.find(
+          (spot) => x >= spot.x && x <= spot.x + spot.width && y >= spot.y && y <= spot.y + spot.height
+        );
+        if (hit) {
+          window.location.href = hit.url;
+        }
       });
 
-      applyExtraButton.addEventListener("click", async () => {
-        if (!state.selectedPart) return;
-        const cleaned = cleanExtraContours(extraInput.value);
-        extraInput.value = cleaned;
-        await loadPart(state.selectedPart.part_number, cleaned);
-        renderPartMode();
+      previewSkeletonButton.addEventListener("click", () => {
+        const canvas = buildSkeletonCanvas(lastSheetSnapshot.setup, lastSheetSnapshot.parts || []);
+        if (!canvas) return;
+        const sheetWidth = lastSheetSnapshot.setup.sheetX;
+        const sheetHeight = lastSheetSnapshot.setup.sheetY;
+        const imageUrl = canvas.toDataURL("image/png");
+        const popup = window.open("", "sheet-skeleton-preview", "width=900,height=700");
+        if (!popup) {
+          window.alert("Unable to open preview window. Please allow popups for this site.");
+          return;
+        }
+        popup.document.title = "Sheet Skeleton Preview";
+        popup.document.body.style.margin = "0";
+        popup.document.body.style.display = "flex";
+        popup.document.body.style.flexDirection = "column";
+        popup.document.body.style.alignItems = "center";
+        popup.document.body.style.justifyContent = "center";
+        popup.document.body.style.background = "#f8fafc";
+        popup.document.body.style.gap = "16px";
+        popup.document.body.style.padding = "24px";
+        const image = popup.document.createElement("img");
+        image.src = imageUrl;
+        image.alt = "Sheet skeleton preview";
+        image.style.maxWidth = "100%";
+        image.style.height = "auto";
+        popup.document.body.appendChild(image);
+        const gcodeBlock = popup.document.createElement("pre");
+        const formatCoord = (value) => Number(value).toFixed(2);
+        const splitSegments = buildSkeletonSegments(sheetWidth, sheetHeight, lastSheetSnapshot.parts || []);
+        const segmentBlocks = splitSegments
+          .map(
+            (segment) => `G0 X${formatCoord(segment.start.x)}, Y${formatCoord(segment.start.y)}
+HKCUT(0,0,0)
+G1 X${formatCoord(segment.end.x)}, Y${formatCoord(segment.end.y)}
+HKSTO(0,0,0)`
+          )
+          .join("\n\n");
+        gcodeBlock.textContent = `N10001 HKSTR(1,1,0,0,0,0.0,0,0)
+HKPIE(0,0,0)
+
+${segmentBlocks}`;
+        gcodeBlock.style.background = "#0f172a";
+        gcodeBlock.style.color = "#f8fafc";
+        gcodeBlock.style.padding = "16px 20px";
+        gcodeBlock.style.borderRadius = "12px";
+        gcodeBlock.style.width = "min(720px, 100%)";
+        gcodeBlock.style.whiteSpace = "pre-wrap";
+        gcodeBlock.style.fontFamily = "SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace";
+        gcodeBlock.style.fontSize = "14px";
+        gcodeBlock.style.lineHeight = "1.6";
+        popup.document.body.appendChild(gcodeBlock);
       });
 
       const params = new URLSearchParams(window.location.search);
-      const preloadedJob = params.get("job_id");
-      if (preloadedJob) {
-        loadJob(preloadedJob);
-      } else {
-        renderMenu();
-        menuStatus.textContent = "Upload to begin.";
+      const jobId = params.get("job_id");
+      if (jobId) {
+        loadJob(jobId);
       }
-
     </script>
   </body>
 </html>

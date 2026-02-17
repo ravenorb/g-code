@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HK Parser Upload</title>
     <style>
+      :root { color-scheme: light; }
       body {
+        margin: 0;
         font-family: Arial, sans-serif;
-        margin: 2rem;
         background: #f8fafc;
         color: #0f172a;
+        height: 100vh;
+        overflow: hidden;
       }
       h1,
       h2 {
@@ -129,6 +132,8 @@
         font-size: 0.9rem;
         color: #475569;
       }
+      .hidden { display: none; }
+      #upload-form { display: none; }
     </style>
   </head>
   <body>
@@ -187,6 +192,11 @@
       <h2>Original File Code</h2>
       <pre id="raw-code" class="code-box"></pre>
     </div>
+
+    <form id="upload-form">
+      <input id="file" type="file" name="file" accept=".gcode,.txt,.mpf,.nc,.tap" />
+      <textarea id="description" name="description"></textarea>
+    </form>
 
     <script>
       const form = document.getElementById("upload-form");

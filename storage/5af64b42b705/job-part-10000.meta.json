@@ -1,0 +1,25 @@
+{
+  "jobId": "5af64b42b705-part-10000",
+  "sourceJobId": "5af64b42b705",
+  "originalFile": "job-part-10000.mpf",
+  "storedPath": "storage/5af64b42b705/job-part-10000.mpf",
+  "description": "Extracted part 10000",
+  "uploadedAt": "2026-02-15T21:47:37.501387+00:00",
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "lines": 14
+  },
+  "parts": [
+    {
+      "partLine": 10000,
+      "hkostLine": 10000,
+      "profileLine": null,
+      "contours": null
+    }
+  ],
+  "setup": {
+    "sheetX": 1.6,
+    "sheetY": 2.6
+  }
+}

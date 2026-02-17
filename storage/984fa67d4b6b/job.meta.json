@@ -1,0 +1,14 @@
+{
+  "jobId": "984fa67d4b6b",
+  "originalFile": "job.gcode",
+  "storedPath": "storage/984fa67d4b6b/job.gcode",
+  "uploadedAt": "2026-02-15T21:47:37.471596+00:00",
+  "description": "",
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "lines": 2
+  },
+  "parts": [],
+  "setup": {}
+}

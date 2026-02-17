@@ -20,7 +20,7 @@ pip install -r server/requirements.txt
 uvicorn server.app.main:app --reload
 ```
 
-### Container
+##Container
 
 ```bash
 docker-compose up --build
@@ -46,3 +46,11 @@ standalone file at the storage root.
 
 The API will be available on [http://localhost](http://localhost). If you run the app directly with Uvicorn, the
 default port is 8000.
+
+If you use `reload.sh` on a host where `/opt` is not writable, set a writable target directory:
+
+```bash
+TARGET_BASE_DIR=$HOME/mts ./reload.sh
+```
+
+The script now also auto-falls back to `$HOME/mts` when the target base directory is not writable.

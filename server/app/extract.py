@@ -28,8 +28,6 @@ def extract_part_program(
     part_label: int,
     margin: float = 0.0,
     extra_contours: List[tuple[int, int]] | None = None,
-    contour_order: list[str] | None = None,
-    contour_labels: list[str] | None = None,
 ) -> PartExtractionResult:
     """Create a standalone program that contains only the requested part definition."""
     lines = [line.rstrip() for line in content.splitlines() if line.strip()]
@@ -60,8 +58,6 @@ def extract_part_program(
             extra_blocks.append(block)
         if extra_blocks:
             part_lines = _insert_extra_contours(part_lines, extra_blocks)
-    if contour_order:
-        part_lines = _reorder_contour_block_with_labels(part_lines, contour_order, contour_labels)
     trailer_lines, _ = _collect_until_hkppp(lines, hkost_idx)
     min_x, min_y, max_x, max_y = _bounds_for_block(part_lines)
     width = (max_x - min_x) + margin
@@ -193,43 +189,6 @@ def _reorder_contour_block(part_block: List[str], order: list[str]) -> List[str]
         reordered_lines.extend(block)
     reordered_lines.extend(suffix)
     return reordered_lines
-
-
-def _reorder_contour_block_with_labels(
-    part_block: List[str],
-    order: list[str],
-    contour_labels: list[str] | None,
-) -> List[str]:
-    contour_blocks = _split_contour_blocks(part_block)
-    if not contour_blocks:
-        return part_block
-    if contour_labels and len(contour_labels) == len(contour_blocks):
-        label_to_index = {str(label).strip(): idx + 1 for idx, label in enumerate(contour_labels)}
-        normalized: list[int] = []
-        seen: set[int] = set()
-        for label in order:
-            idx = label_to_index.get(str(label).strip())
-            if idx is None or idx in seen:
-                continue
-            normalized.append(idx)
-            seen.add(idx)
-        for idx in range(1, len(contour_blocks) + 1):
-            if idx not in seen:
-                normalized.append(idx)
-        if normalized == list(range(1, len(contour_blocks) + 1)):
-            return part_block
-        first_hkstr_idx = next((idx for idx, line in enumerate(part_block) if HKSTR_PATTERN.search(line)), None)
-        if first_hkstr_idx is None:
-            return part_block
-        prefix = part_block[:first_hkstr_idx]
-        suffix = _extract_hkped_suffix(part_block)
-        reordered_lines: List[str] = []
-        reordered_lines.extend(prefix)
-        for idx in normalized:
-            reordered_lines.extend(contour_blocks[idx - 1])
-        reordered_lines.extend(suffix)
-        return reordered_lines
-    return _reorder_contour_block(part_block, order)
 
 
 def _normalize_contour_order(order: list[str], contour_count: int) -> list[int]:
